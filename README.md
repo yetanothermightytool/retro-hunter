@@ -9,9 +9,7 @@ It connects directly to your Veeam backups and scans files from past restore poi
 
 ![alt text](https://github.com/yetanothermightytool/retro-hunter/blob/main/Images/retro-hunter.png)
 
-Retro Hunter is a lightweight Python-based toolkit that scans Veeam Backup & Replication restore points for malware, suspicious binaries, and unusual patterns.
-
-It allows you to investigate historical restore points and perform regular scans over time. By integrating with threat intelligence sources like MalwareBazaar, it continuously checks known file hashes and monitors the scanning results.
+Retro Hunter is a lightweight Python-based toolkit that scans Veeam Backup & Replication restore points for malware, suspicious binaries, and unusual patterns. It allows you to investigate historical restore points and perform regular scans over time. By integrating with threat intelligence sources like MalwareBazaar, it continuously checks known file hashes and monitors the scanning results.
 
 ## ✅ Key Features
 - Search for Veeam backups from a specific host or Veeam Backup Repository
@@ -27,6 +25,45 @@ It allows you to investigate historical restore points and perform regular scans
 - Displays findings in a Streamlit dashboard
 - (Currently) Uses SQLite for persistent storage (file index and scan results)
 
+## ⚙️ Setup Process
+The setup process is simplified with the setup.sh script. You only need to download the malwarebazaar.csv file (See more in the [Technical Details of the Scripts](#-technical-details-of-the-scripts) and run the script with your target folder. During setup, you will be asked for the VBR Server, REST API user, and a password. The password will be securely encrypted and stored using Fernet.
+
+```bash
+./setup.sh /path/to/malwarebazaar.csv retro-hunter
+```
+
 ## 🐳 Docker Support
 A minimal Docker setup is provided to run the dashboard in isolated environments.
 
+## 🛠️ Technical Details of the Scripts
+## Prerequisites
+Some preparations are required for this script to run. 
+
+### Python Modules
+The following Python modules are not part of the standard library and must be installed separately using pip.
+- requests
+- cryptography (for cryptography.fernet.Fernet)
+- colorama
+- yara (usually installed via yara-python)
+
+## YARA Rules
+Save additional YARA rule files in the script folder directory yara_rules. (File extensions .yar and .yara). A sample rule is stored in the yara_rules directory.
+
+## Database
+The script loads the contents of the databases into memory during runtime. Currently, there are two central databases involved: One stores known LOLBAS tools and malware hashes (badfiles.db), while the other (file_index.db) is used to keep track of scanned or stored files and their metadata.
+
+The malwarebazaar table in badfiles.db contains the SHA256 values of the malware files. Download the complete [data dump](https://bazaar.abuse.ch/export/#csv) and unzip the CSV file as malwarebazaar.csv to the script folder. The script import_malwarebazaar_data.py imports the values into the database.
+
+## Possible improvements
+- Bloom filter support to improve memory efficiency when handling large hash sets.
+- Mark the scanned restore point as infected in Veeam Backup & Replication.
+- And a few other nice things that I'm currently researching.
+
+- 1.0 (June 2025)
+  - Initial version
+    
+## Disclaimer
+**This script is not officially supported by Veeam Software. Use it at your own risk.**
+
+Made with ❤️, fueled by 🍺, and powered by the **Veeam Data Integration API**.
+Inspired by real-world needs, supported by a bit of AI.
