@@ -1,5 +1,5 @@
 # Retro Hunter 🕵🏾‍♀️
-**Security Scanner & Threat Audit Tool** for Veeam Backup & Replication Restore Points using the Data Integration API.
+**Security Scanner & Threat Audit Tool** for Veeam Backup & Replication Restore Points using the Veeam Data Integration API.
 
 ## 🛡️Find Threats in Your Backups – With Retro Hunter
 Imagine you’re responsible for your company’s security. You have backups. You trust them. But what if malware or suspicious files are hiding right now or were silently active weeks ago? Wouldn’t it be great to look inside your backups, like a time machine, and search for threats?
@@ -62,22 +62,23 @@ Save additional YARA rule files in the script folder directory yara_rules. (File
 ## Database
 The script loads the contents of the databases into memory during runtime. Currently, there are two central databases involved: One stores known LOLBAS tools and malware hashes (badfiles.db), while the other (file_index.db) is used to keep track of scanned or stored files and their metadata.
 
-The malwarebazaar table in badfiles.db contains the SHA256 values of the malware files. Download the complete [data dump](https://bazaar.abuse.ch/export/#csv) and unzip the CSV file as malwarebazaar.csv to the script folder. The script import_malwarebazaar_data.py imports the values into the database.
+The malwarebazaar table in badfiles.db contains the SHA256 values of the malware files. Download the complete [data dump](https://bazaar.abuse.ch/export/#csv) and unzip the CSV file as malwarebazaar.csv to the folder where the script.sh resides. The setup.sh script will import the values into the database.
 
 ## Possible improvements
 - Bloom filter support to improve memory efficiency when handling large hash sets.
 - Mark the scanned restore point as infected in Veeam Backup & Replication.
 - And a few other nice things that I'm currently researching.
 
-- 1.0 (June 2025)
-  - Initial version
 
 ## Considerations and Limitations
 - The scripts have been created and tested on Ubuntu 22.04.
 - Only filesystems with the NTFS, ext4, and XFS filesystems can be scanned when presenting the restore points using iSCSI
 - When mounting NTFS disks, it’s important to know that Ubuntu (from version 22.04 and newer) uses the built-in ntfs3 kernel driver, which provides better performance and more stable access. In contrast, Rocky Linux and other RHEL-based systems usually rely on the older ntfs-3g driver through FUSE, which is slower because it runs in user space. This means that the way NTFS is handled can vary depending on the system.
 
-    
+## Version History
+- 1.0 (June 2025)
+  - Initial version
+
 ## Disclaimer
 **This script is not officially supported by Veeam Software. Use it at your own risk.**
 
