@@ -102,9 +102,16 @@ suspicious = filtered[(filtered["malware_hit"]) | (filtered["lolbas_hit"]) | (fi
 
 # --- KPI METRICS ---
 malware_files = suspicious["malware_hit"].sum()
-malware_scan = scan_df["Detection"].str.lower().str.contains("malware", na=False).sum()
-lolbas_scan = scan_df["Detection"].str.lower().str.contains("lolbas", na=False).sum()
-yara_scan = scan_df["Detection"].str.lower().str.contains("yara", na=False).sum()
+# Falls 'Detection' fehlt, auf 0 setzen
+if "Detection" in scan_df.columns:
+   malware_scan = scan_df["Detection"].str.lower().str.contains("malware", na=False).sum()
+   lolbas_scan = scan_df["Detection"].str.lower().str.contains("lolbas", na=False).sum()
+   yara_scan = scan_df["Detection"].str.lower().str.contains("yara", na=False).sum()
+else:
+   malware_scan = 0
+   lolbas_scan = 0
+   yara_scan = 0
+
 
 # Filter out known system paths for multi-use hash analysis
 multiuse_query = """
