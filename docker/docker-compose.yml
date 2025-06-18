@@ -1,15 +1,14 @@
 services:
  security-dashboard:
    build:
-     context: .
+     context: .       # wichtig: das ist der docker/ Ordner
      dockerfile: Dockerfile
    image: retro-hunter
    container_name: retro-hunter-yamt
    ports:
      - "8501:8501"
    volumes:
-     - ./app.py:/app/app.py
-     - ./file_index.db:/app/file_index.db
-     - ./badfiles.db:/app/badfiles.db
+     - ../file_index.db:/app/file_index.db
+     - ../badfiles.db:/app/badfiles.db
      - ./certs:/app/certs
    restart: unless-stopped
