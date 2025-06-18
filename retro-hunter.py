@@ -146,7 +146,7 @@ def run_scanner(mount_path, host2scan, workers, yaramode, rp_id, rp_ts, rp_statu
     subprocess.run(cmd)
 
 # Run Store Script function
-def run_store(mount_path, host2scan, rp_id, rp_ts, rp_status):
+def run_store(mount_path, host2scan, rp_id, rp_ts, rp_status, db_path):
     store_script = "./store.py"
     if not os.path.exists(store_script):
         print("❌ store.py not found.")
@@ -157,7 +157,8 @@ def run_store(mount_path, host2scan, rp_id, rp_ts, rp_status):
         "--hostname", str(host2scan),
         "--restorepoint-id", str(rp_id),
         "--rp-timestamp", str(rp_ts),
-        "--rp-status", str(rp_status)
+        "--rp-status", str(rp_status),
+        "--db", str(db_path)
     ]
     print(f"[{host2scan}] 💾 Indexing files from mount {mount_path}")
     subprocess.run(cmd)
@@ -202,7 +203,7 @@ def run_iscsi_scan(mount_id, session_info, host2scan, workers, yaramode, args, r
         if args.scan:
             run_scanner(mnt_path, host2scan, workers, yaramode, rp_id, rp_ts, rp_status, args.db, args.csv)
         if args.store:
-            run_store(mnt_path, host2scan, rp_id, rp_ts, rp_status)
+            run_store(mnt_path, host2scan, rp_id, rp_ts, rp_status, args.db)
     time.sleep(10)
 
     print(f"[{host2scan}] 🧹 Cleaning up...")
@@ -281,7 +282,7 @@ def do_mount_scan(token, scanhost, local_ip, rp_id, hostname, use_iscsi, workers
                log_message(hostname, f"Running scan on {path} [FUSE]...")
                run_scanner(path, hostname, workers, yaramode, rp_id, rp_ts, rp_status, args.db, args.csv)
            if args.store:
-               run_store(path, hostname, rp_id, rp_ts, rp_status)
+               run_store(path, hostname, rp_id, rp_ts, rp_status, args.db)
     time.sleep(10)
     print(f"[{hostname}] 🛑 Unpublishing...")
     time.sleep(3)
