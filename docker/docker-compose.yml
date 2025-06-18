@@ -3,7 +3,6 @@ services:
    build:
      context: .       # wichtig: das ist der docker/ Ordner
      dockerfile: Dockerfile
-   image: retro-hunter
    container_name: retro-hunter-yamt
    ports:
      - "8501:8501"
