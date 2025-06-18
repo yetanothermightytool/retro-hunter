@@ -13,14 +13,14 @@ Retro Hunter is a lightweight Python-based toolkit that scans Veeam Backup & Rep
 
 ## ✅ Key Features
 - Search for Veeam backups from a specific host or Veeam Backup Repository
-- Mounts the manually the selected backup via Veeam Data Integration API
-- Mounts the latest restore point from all supported platforms from a Veeam Backup Repositry
+- Mounts the manually selected backup via the Veeam Data Integration API
+- Mounts the latest restore point from all supported platforms from a Veeam Backup Repository
 - Scans mounted Veeam restore points
 - Saves useful metadata from the presented files
 - Parallelized scanning using Python’s multiprocessing for fast performance
 - Tracks file changes across restore points (hash or size drift)
 - Detects known malware using hash lookups from MalwareBazaar
-- Identifies out of place LOLBAS (Living Off the Land Binaries and Scripts)
+- Identifies out-of-place LOLBAS (Living Off the Land Binaries and Scripts)
 - Optionally applies YARA rules to selected file types during scan
 - Displays findings in a Streamlit dashboard
 - (Currently) Uses SQLite for persistent storage (file index and scan results)
@@ -33,11 +33,21 @@ The setup process is simplified with the setup.sh script. You only need to downl
 ```
 
 ## 🐳 Docker Support
-A minimal Docker setup is provided to run the dashboard in isolated environments.
+A minimal Docker setup is provided to run the Streamlit dashboard in isolated environments.
 
 ## 🛠️ Technical Details of the Scripts
+## Version Information
+~~~~
+Version: 1.0 (June 2025)
+Requires: Veeam Backup & Replication v12.3.1 & Linux & Python 3.1+
+Author: Stephan "Steve" Herzig
+~~~~
+
 ## Prerequisites
 Some preparations are required for this script to run. 
+
+### Veeam Backup & Replication
+You must add the Linux server on which this script is executed to the [backup infrastructure](https://helpcenter.veeam.com/docs/backup/vsphere/add_linux_server.html).
 
 ### Python Modules
 The following Python modules are not part of the standard library and must be installed separately using pip.
@@ -61,6 +71,12 @@ The malwarebazaar table in badfiles.db contains the SHA256 values of the malware
 
 - 1.0 (June 2025)
   - Initial version
+
+## Considerations and Limitations
+- The scripts have been created and tested on Ubuntu 22.04.
+- Only filesystems with the NTFS, ext4, and XFS filesystems can be scanned when presenting the restore points using iSCSI
+- When mounting NTFS disks, it’s important to know that Ubuntu (from version 22.04 and newer) uses the built-in ntfs3 kernel driver, which provides better performance and more stable access. In contrast, Rocky Linux and other RHEL-based systems usually rely on the older ntfs-3g driver through FUSE, which is slower because it runs in user space. This means that the way NTFS is handled can vary depending on the system.
+
     
 ## Disclaimer
 **This script is not officially supported by Veeam Software. Use it at your own risk.**
