@@ -15,7 +15,7 @@ def encrypt_password(password):
         with open("encryption_key.key", "rb") as key_file:
             key = key_file.read()
     except FileNotFoundError:
-        print("Encryption key not found. Generating a new key...")
+        print("❗ Encryption key not found. Generating a new key...")
         key = generate_key()
 
     fernet = Fernet(key)
@@ -23,9 +23,9 @@ def encrypt_password(password):
 
     with open("encrypted_password.bin", "wb") as encrypted_file:
         encrypted_file.write(encrypted_password)
-    print("Password encrypted and stored securely.")
+    print("🔒 Password encrypted and stored securely.")
 
 # Main
 if __name__ == "__main__":
-    user_password = getpass.getpass("Enter the Veeam REST API user password to be stored securely: ")
+    user_password = getpass.getpass("🔑 Enter the Veeam REST API user password to be stored securely: ")
     encrypt_password(user_password)
