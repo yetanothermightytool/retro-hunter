@@ -25,6 +25,9 @@ Retro Hunter is a lightweight Python-based toolkit that scans Veeam Backup & Rep
 - Displays findings in a Streamlit dashboard
 - (Currently) Uses SQLite for persistent storage (file index and scan results)
 
+## 🚀 Quickstart (tl;dr)
+Run the setup script, and start scanning! Execute `setup.sh` with the path to your `malwarebazaar.csv` file to initialize the environment and databases. Once done, you can use `retro-hunter.py` to analyze mounted restore points for malware, LOLBAS, and YARA hits, or to index all executables and scripts. Finally, open the dashboard at https://<your-hostname>:8501 to explore the results.
+
 ## ⚙️ Setup Process
 The setup process is simplified with the setup.sh script. You only need to download the malwarebazaar.csv file (See more in the [Technical Details of the Scripts](#database) and run the script on your Linux host. You will be asked for the Veeam Backup & Replication Server hostname, REST API user, and a password during the setup. The password will be securely encrypted and stored using Fernet.
 
