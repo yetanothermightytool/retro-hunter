@@ -26,14 +26,14 @@ Retro Hunter is a lightweight Python-based toolkit that scans Veeam Backup & Rep
 - (Currently) Uses SQLite for persistent storage (file index and scan results)
 
 ## ⚙️ Setup Process
-The setup process is simplified with the setup.sh script. You only need to download the malwarebazaar.csv file (See more in the [Technical Details of the Scripts](#database) and run the script with your target folder. During setup, you will be asked for the VBR Server, REST API user, and a password. The password will be securely encrypted and stored using Fernet.
+The setup process is simplified with the setup.sh script. You only need to download the malwarebazaar.csv file (See more in the [Technical Details of the Scripts](#database) and run the script on your Linux host. You will be asked for the Veeam Backup & Replication Server hostname, REST API user, and a password during the setup. The password will be securely encrypted and stored using Fernet.
 
 ```bash
 ./setup.sh /path/to/malwarebazaar.csv retro-hunter
 ```
 
 ## 🐳 Docker Support
-A minimal Docker setup is provided to run the Streamlit dashboard in isolated environments.
+A minimal Docker setup is provided to run the Streamlit dashboard as a container.
 
 ## 🛠️ Technical Details of the Scripts
 ## Version Information
@@ -47,7 +47,8 @@ Author: Stephan "Steve" Herzig
 Some preparations are required for this script to run. 
 
 ### Veeam Backup & Replication
-You must add the Linux server on which this script is executed to the [backup infrastructure](https://helpcenter.veeam.com/docs/backup/vsphere/add_linux_server.html).
+- You must add the Linux server on which this script is executed to the [backup infrastructure](https://helpcenter.veeam.com/docs/backup/vsphere/add_linux_server.html).
+- Create a separate user for REST API access. The user must be assigned the “Veeam Backup Administrator” role.
 
 ### Python Modules
 The following Python modules are not part of the standard library and must be installed separately using pip.
@@ -55,6 +56,7 @@ The following Python modules are not part of the standard library and must be in
 - cryptography (for cryptography.fernet.Fernet)
 - colorama
 - yara (usually installed via yara-python)
+- and more for the Docker container (requirements.txt)
 
 ## YARA Rules
 Save additional YARA rule files in the script folder directory yara_rules. (File extensions .yar and .yara). A sample rule is stored in the yara_rules directory.
@@ -64,11 +66,46 @@ The script loads the contents of the databases into memory during runtime. Curre
 
 The malwarebazaar table in badfiles.db contains the SHA256 values of the malware files. Download the complete [data dump](https://bazaar.abuse.ch/export/#csv) and unzip the CSV file as malwarebazaar.csv to the folder where the script.sh resides. The setup.sh script will import the values into the database.
 
+## Retro Hunter Python Script
+### Script Parameters
+The following parameters must be passed to the script
+
+- `--host2scan`
+Hostname for which the backups must be presented.
+- `--repo2scan`
+Repository name for which the hosts and restore points are retreved. Can be combined with --all.
+- `--all`
+_(optional)_ Scans the latest restore point of all valid hosts in the specified repository. Recommended to use with --iscsi for better performance.
+Supported platforms are VMware, Hyper-V, Windows Agent, Linux Agent.
+- `--scan`
+Triggers the malware and threat detection scan by executing the scanner.py script after a restore point has been mounted.
+- `--store`
+Collects the metadata for all relevant binary files by executing the store.py script after a restore point has been mounted.
+- `--maxhosts`
+_(optional)_ The maximum number of hosts to be scanned in parallel when using --all. (Default 1)
+- `--workers`
+_(optional)_ The number of workers to use for the scanning process. (Default 4)
+- `--iscsi`
+_(optional)_ Present the backups using iSCSI. Only filesystems with the NTFS, ext4 and xfs filesystem can be scanned.
+- `--yaramode`
+_(optional)_ YARA scan mode - off (default), all, suspicious (scans only files that show indicators of compromise), content (Targets commont document/text files to detecte sensitive data patterns (e.g. PII, credentials) 
+
+### Examples
+Some examples of how the script can be executed.
+
+Scan host win-server-01. Restore points are presented using iSCSI.
+```bash
+sudo ./retro-hunter.py --host2scan win-server-01 --iscsi --scan
+```
+Scan the latest restore point of all suppored hosts from Veeam Repository "Repository 01". Triggers a YARA scan, when a suspicious file is found. Restore points are presented using iSCSI.
+```bash
+sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi --scan
+```
+
 ## Possible improvements
 - Bloom filter support to improve memory efficiency when handling large hash sets.
 - Mark the scanned restore point as infected in Veeam Backup & Replication.
 - And a few other nice things that I'm currently researching.
-
 
 ## Considerations and Limitations
 - The scripts have been created and tested on Ubuntu 22.04.
