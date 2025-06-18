@@ -1,8 +1,9 @@
 services:
  security-dashboard:
    build:
-     context: .       # wichtig: das ist der docker/ Ordner
+     context: .
      dockerfile: Dockerfile
+   image: retro-hunter
    container_name: retro-hunter-yamt
    ports:
      - "8501:8501"
