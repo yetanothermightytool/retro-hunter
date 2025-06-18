@@ -23,10 +23,15 @@ def load_files():
        st.warning(f"  Could not load Malware Hash Matches {e}")
        return pd.DataFrame()
 
-
 def load_scan_findings():
    try:
        conn = sqlite3.connect(DB_PATH)
+       cursor = conn.cursor()
+       # Check if table 'scan_findings' exists
+       cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='scan_findings'")
+       if not cursor.fetchone():
+           st.warning("⚠️ Table 'scan_findings' does not exist yet.")
+           return pd.DataFrame()
        df = pd.read_sql_query("""
            SELECT path, sha256, detection AS 'Detection', hostname, rp_timestamp, rp_status, scanned_at
            FROM scan_findings
