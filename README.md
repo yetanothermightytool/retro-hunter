@@ -26,7 +26,7 @@ Retro Hunter is a lightweight Python-based toolkit that scans Veeam Backup & Rep
 - (Currently) Uses SQLite for persistent storage (file index and scan results)
 
 ## ⚙️ Setup Process
-The setup process is simplified with the setup.sh script. You only need to download the malwarebazaar.csv file (See more in the [Technical Details of the Scripts](#-technical-details-of-the-scripts) and run the script with your target folder. During setup, you will be asked for the VBR Server, REST API user, and a password. The password will be securely encrypted and stored using Fernet.
+The setup process is simplified with the setup.sh script. You only need to download the malwarebazaar.csv file (See more in the [Technical Details of the Scripts](#database) and run the script with your target folder. During setup, you will be asked for the VBR Server, REST API user, and a password. The password will be securely encrypted and stored using Fernet.
 
 ```bash
 ./setup.sh /path/to/malwarebazaar.csv retro-hunter
