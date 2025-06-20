@@ -103,7 +103,6 @@ suspicious = filtered[(filtered["malware_hit"]) | (filtered["lolbas_hit"]) | (fi
 
 # --- KPI METRICS ---
 malware_files = suspicious["malware_hit"].sum()
-# Falls 'Detection' fehlt, auf 0 setzen
 if "Detection" in scan_df.columns:
    malware_scan = scan_df["Detection"].str.lower().str.contains("malware", na=False).sum()
    lolbas_scan = scan_df["Detection"].str.lower().str.contains("lolbas", na=False).sum()
