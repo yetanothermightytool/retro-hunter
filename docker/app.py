@@ -18,6 +18,7 @@ def load_files():
        df["hostname"] = df["hostname"].str.strip().str.lower()
        df["rp_timestamp"] = pd.to_datetime(df["rp_timestamp"], errors="coerce")
        df["rp_status"] = df["rp_status"].fillna("unknown")
+       df["inserted_at"] = pd.to_datetime(df.get("inserted_at", None), errors="coerce")
        return df
    except Exception as e:
        st.warning(f"  Could not load Malware Hash Matches {e}")
@@ -69,7 +70,7 @@ def enrich_files_with_hits(files_df, scan_df, malware_df):
 
 def classify_risk(row):
    if row["malware_hit"]:
-       return "🐞 Infected"
+       return "High"
    elif row["yara_hit"]:
        return "YARA"
    elif row["lolbas_hit"]:
@@ -94,7 +95,7 @@ date_range = st.sidebar.date_input("Date Range", [])
 filtered = files_df[files_df["hostname"].isin(selected_hosts)]
 if len(date_range) == 2:
    start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-   filtered = filtered[(filtered["rp_timestamp"] >= start) & (filtered["rp_timestamp"] <= end)]
+   filtered = filtered[(filtered["inserted_at"] >= start) & (filtered["inserted_at"] <= end)]
    scan_df = scan_df[(scan_df["scanned_at"] >= start) & (scan_df["scanned_at"] <= end)]
 
 # --- SUSPICIOUS FILES ---
@@ -151,15 +152,17 @@ if not suspicious.empty:
         "filename": "Filename",
         "path": "Path",
         "sha256": "SHA-256",
+        "inserted_at": "Inserted At",
         "rp_timestamp": "RP Timestamp",
         "rp_status": "RP Status"
     })
 
+    suspicious_view["RP Status"] = suspicious_view["RP Status"].str.lower().replace("infected", "🐞 Infected")
     suspicious_view["VT Link"] = suspicious_view["SHA-256"].apply(
         lambda h: f"[🔗] https://www.virustotal.com/gui/file/{h}"
     )
-    display_df = suspicious_view.sort_values("RP Timestamp", ascending=False)[
-        ["Host", "Filename", "Path", "Risk Level", "RP Timestamp", "RP Status", "VT Link"]
+    display_df = suspicious_view.sort_values("Inserted At", ascending=False)[
+        ["Host", "Filename", "Path", "Risk Level", "RP Timestamp", "RP Status", "Inserted At", "VT Link"]
     ]
     st.dataframe(display_df, use_container_width=True)
 else:
@@ -223,8 +226,6 @@ run_analysis_query("📂 Scripts in Temp/Download Directories", """
 """)
 
 run_analysis_query("🌀 Multi-use Hashes (Same SHA256, multiple filenames)", """
-   SELECT sha256 AS 'SHA-256', path AS 'Path', COUNT(DISTINCT filename) AS 'Filename Count', GROUP_CONCAT(DISTINCT filename) as 'Filenames'
-   FROM files
    WHERE LOWER(path) NOT LIKE '%/windows/%'
      AND LOWER(path) NOT LIKE '%/winsxs/%'
      AND LOWER(path) NOT LIKE '%/appdata/%'
