@@ -226,12 +226,16 @@ run_analysis_query("📂 Scripts in Temp/Download Directories", """
 """)
 
 run_analysis_query("🌀 Multi-use Hashes (Same SHA256, multiple filenames)", """
-   WHERE LOWER(path) NOT LIKE '%/windows/%'
-     AND LOWER(path) NOT LIKE '%/winsxs/%'
-     AND LOWER(path) NOT LIKE '%/appdata/%'
-     AND LOWER(path) NOT LIKE '%/recycle.bin/%'
-   GROUP BY sha256
-   HAVING COUNT(DISTINCT filename) > 1
+  SELECT sha256 AS 'SHA-256', path AS 'Path',
+         COUNT(DISTINCT filename) AS 'Filename Count',
+         GROUP_CONCAT(DISTINCT filename) AS 'Filenames'
+  FROM files
+  WHERE LOWER(path) NOT LIKE '%/windows/%'
+    AND LOWER(path) NOT LIKE '%/winsxs/%'
+    AND LOWER(path) NOT LIKE '%/appdata/%'
+    AND LOWER(path) NOT LIKE '%/recycle.bin/%'
+  GROUP BY sha256
+  HAVING COUNT(DISTINCT filename) > 1
 """)
 
 run_analysis_query("⚙️ System Process Names Outside System32", """
