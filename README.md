@@ -116,13 +116,15 @@ sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi
 | 🌀 Multi-use Hashes | SHA256 hashes that appear with multiple filenames (possible masquerading) |
 
 📊 Table Overview
-- **Malware Hash Matches** Displays files from the backup that match known malware hashes (e.g. from MalwareBazaar). Helps identify known threats.
-- **Scan Findings** Results from YARA or LOLBAS scans. Includes detection labels, scan timestamps, and affected files.
-- **Large Executables > 50MB** Shows .exe files larger than 50MB, which may indicate suspicious payloads or packers.
-- **Suspicious EXEs in AppData** Lists executables located in AppData folders – commonly abused by malware for persistence or evasion.
-- **Scripts in Temp/Download Directories** Detects script files (e.g., .ps1, .sh, .bat) in temporary or download paths – often used for staging attacks.
-- **Multi-use Hashes (Same SHA256, multiple filenames)** Highlights SHA-256 hashes used with different filenames. May indicate renamed or disguised malware.
-- **System Process Names Outside System32** Known system process names (e.g., svchost.exe, lsass.exe) found outside trusted paths like System32. Strong indicator of abuse or masquerading.
+| Table  | Description |
+| ------------- | ------------- |
+| 🐞 Malware Hash Matches | Displays files from the backup that match known malware hashes (e.g. from MalwareBazaar). Helps identify known threats |
+| 🔍 Scan Findings | Results from YARA or LOLBAS scans. Includes detection labels, scan timestamps, and affected files |
+| 💣 Large Executables > 50MB | Shows .exe files larger than 50MB, which may indicate suspicious payloads or packers |
+| 📁 Suspicious EXEs in AppData | Lists executables located in AppData folders – commonly abused by malware for persistence or evasion |
+| 📂 Scripts in Temp/Download Directories | Detects script files (e.g., .ps1, .sh, .bat) in temporary or download paths – often used for staging attacks |
+| 🌀 Multi-use Hashes (Same SHA256, multiple filenames) | Highlights SHA-256 hashes used with different filenames. May indicate renamed or disguised malware |
+| ⚙️ System Process Names Outside System32 | Known system process names (e.g., svchost.exe, lsass.exe) found outside trusted paths like System32. Strong indicator of abuse or masquerading |
 
 ## Possible improvements
 - Bloom filter support to improve memory efficiency when handling large hash sets.
