@@ -107,11 +107,13 @@ sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi
 
 ## Retro Hunter Streamlit Dashboard
 ✅ Key Metrics (Top 5 KPIs):
-- **Malware Matches** Total number of files matching known malware hashes.
-- **LOLBAS Hits** Files flagged by LOLBAS rule matches.
-- **YARA Matches** Files identified via YARA rules
-- **Total Files** Number of indexed files.
-- **Multi-use Hashes** SHA256 hashes that appear with multiple filenames (possible masquerading).
+| Metric  | Description |
+| ------------- | ------------- |
+| 🦠 Malware Matches  | Total number of files matching known malware hashes|
+| 🛠️ LOLBAS Hit | Files flagged by LOLBAS rule matches |
+| 🔬 YARA Matches | Files identified via YARA rules |
+| 📂 Total Files | Number of indexed files |
+| 🌀 Multi-use Hashes | SHA256 hashes that appear with multiple filenames (possible masquerading) |
 
 📊 Table Overview
 - **Malware Hash Matches** Displays files from the backup that match known malware hashes (e.g. from MalwareBazaar). Helps identify known threats.
