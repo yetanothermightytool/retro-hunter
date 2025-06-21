@@ -87,6 +87,15 @@ def init_db(path):
   conn.commit()
   conn.close()
 
+def file_already_indexed(conn, hostname, filename, size, modified):
+   cur = conn.cursor()
+   cur.execute('''
+       SELECT 1 FROM files
+       WHERE hostname = ? AND filename = ? AND size = ? AND modified = ?
+       LIMIT 1
+   ''', (hostname, filename, size, modified))
+   return cur.fetchone() is not None
+
 # Calculates the SHA-256 hash of a file
 def sha256_file(path):
   h = hashlib.sha256()
@@ -155,21 +164,35 @@ def extract_metadata(path):
       return None
 
 # Hashes and processes each file and sends metadata to result queue.
-def worker(chunk_queue, result_queue, hostname, restorepoint_id, rp_timestamp, rp_status):
-  while True:
-      try:
-          chunk = chunk_queue.get(timeout=5)
-      except Empty:
-          break
-      for file_path in chunk:
-          meta = extract_metadata(file_path)
-          if meta and meta["sha256"]:
-              meta["hostname"] = hostname
-              meta["restorepoint_id"] = restorepoint_id
-              meta["rp_timestamp"] = rp_timestamp
-              meta["rp_status"] = rp_status
-              result_queue.put(meta)
-      chunk_queue.task_done()
+def worker(chunk_queue, result_queue, hostname, restorepoint_id, rp_timestamp, rp_status, db_path):
+   conn = sqlite3.connect(db_path)
+   cur = conn.cursor()
+
+   while True:
+       try:
+           chunk = chunk_queue.get(timeout=5)
+       except Empty:
+           break
+       for file_path in chunk:
+           meta = extract_metadata(file_path)
+           if meta and meta["sha256"]:
+               # Check if already exists in DB
+               cur.execute("""
+                   SELECT 1 FROM files
+                   WHERE hostname = ? AND sha256 = ?
+               """, (hostname, meta["sha256"]))
+               if cur.fetchone():
+                   continue  # Skip duplicate
+
+               # Add metadata
+               meta["hostname"] = hostname
+               meta["restorepoint_id"] = restorepoint_id
+               meta["rp_timestamp"] = rp_timestamp
+               meta["rp_status"] = rp_status
+               result_queue.put(meta)
+       chunk_queue.task_done()
+
+   conn.close()
 
 # Reads results from the queue and inserts them into the database
 def write_results(result_queue, db_path):
@@ -231,7 +254,7 @@ def main():
   for _ in range(args.workers):
       p = multiprocessing.Process(
           target=worker,
-          args=(chunk_queue, result_queue, args.hostname, args.restorepoint_id, args.rp_timestamp, args.rp_status)
+          args=(chunk_queue, result_queue, args.hostname, args.restorepoint_id, args.rp_timestamp, args.rp_status, args.db)
       )
       p.start()
       workers.append(p)
