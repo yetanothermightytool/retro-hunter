@@ -126,6 +126,111 @@ sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi
 | 🌀 Multi-use Hashes (Same SHA256, multiple filenames) | Highlights SHA-256 hashes used with different filenames. May indicate renamed or disguised malware |
 | ⚙️ System Process Names Outside System32 | Known system process names (e.g., svchost.exe, lsass.exe) found outside trusted paths like System32. Strong indicator of abuse or masquerading |
 
+## The Scripts
+## vbr-scanner.py script and parameters
+The following parameters must be passed to the script
+
+- `--host2scan`
+Hostname for which the backups must be presented.
+- `--repo2scan`
+Repository name for which the hosts and restore points are retreved. Can be combined with --all.
+- `--all`
+_(optional)_ Scans the latest restore point of all valid hosts in the specified repository. Recommended to use with --iscsi for better performance. Supported platforms are VMware, Hyper-V, Windows Agent, Linux Agent.
+- `--maxhosts`
+_(optional)_ The maximum number of hosts to be scanned in parallel when using --all. (Default 1)
+- `--workers`
+_(mandatory)_ The number of workers to use for the scanning process.
+- `--iscsi`
+_(optional)_ Present the backups using iSCSI. Only filesystems with the NTFS, ext4 and xfs filesystem can be scanned.
+- `--yaramode`
+_(optional)_ YARA scan mode - off (default), all, suspicious (scans only files that show indicators of compromise), content (Targets commont document/text files to detecte sensitive data patterns (e.g. PII, credentials) 
+
+### Examples
+Scan host win-server-01. Restore points are presented using iSCSI.
+```bash
+sudo ./vbr-scanner.py --host2scan win-server-01 --workers 8 --iscsi
+```
+Scan the latest restore point of all suppored hosts from Veeam Repository "Repository 01". Triggers a YARA scan, when a suspicious file is found. Restore points are presented using iSCSI.
+```bash
+sudo ./vbr-scanner.py --repo2scan "Repository 01" --workers 8 --yaramode suspicious --iscsi
+```
+### Scanning Process Details
+The following folders are excluded from the scanning process. You can adjust the list using the existing DEFAULT_EXCLUDES variable.
+
+- **Windows\\WinSxS**
+- **Windows\\Temp**
+- **Windows\\SysWOW64**
+- **Windows\\System32\\DriverStore**
+- **Windows\\Servicing**
+- **ProgramData\\Microsoft\\Windows Defender**
+- **ProgramData\\Microsoft\\Windows Defender\\Platform**
+- **System Volume Information**
+- **Recovery**
+- **Windows\\Logs**
+- **Windows\\SoftwareDistribution\\Download**
+- **Windows\\Prefetch**
+- **Program Files\\Common Files\\Microsoft Shared**
+- **Windows\\Microsoft.NET\\Framework64**
+- **$Recycle.Bin**
+
+### scanner.py Parameters
+The Data Integration API script is not using all the available scanner.py parameters. This can be adjusted if necessary.
+- Mount			Path to the mounted backup filesystem
+- Workers		Default = Multiprocessing CPU Count / 2
+
+Optional Parameters
+- `--Filetypes`
+_(optional)_ Comma-separated list of file extensions (e.g., .exe,.dll)")
+- `--Maxsize`
+_(optional)_ Maximum file size in MB
+- `--Exclude`
+_(optional)_ Experimental Comma-separated list of directories to exclude (partial paths)
+- `--CSV`
+_(optional)_ Save results to this CSV file
+- `--Verbose`
+_(optional)_ Print all scanned files, not just matches
+- `--Logfile`
+_(optional)_ Path to logfile for matches (might get removed)
+- `--yara`
+_(optional)_ YARA scan mode (off, all, suspicious, content)
+
+## store.py script details (Version 2.0)
+This script scans the mounted file system and collects detailed metadata for selected files. It calculates a SHA-256 hash for each file and stores all data in a local SQLite database. If the database does not exist, it is automatically created during the first run. The metadata stored includes file name, path, size, timestamps, extension, file type, and whether the file is executable. Each entry is tagged with a hostname, restore point ID, and timestamp, making later comparisons across backups possible.
+The script supports parallel processing and can speed up scanning using multiple CPU cores. Filters can be applied to limit which files are scanned: only specific file types (like .exe or .dll), a maximum file size, and folders to exclude. 
+The script extracts key information for each file that matches the filters and calculates its SHA-256 hash. All collected data is inserted into the database, unless an entry with the same hostname and hash already exists.
+
+### File Type Detection (Simple explanation)
+The script detects files based on their extensions:
+- Executables: .exe, .dll, .bin, .sh, etc. 
+- Scripts: .py, .js, .ps1, .bat 
+- Images: .jpg, .png, .gif, etc. 
+- Documents: .pdf, .docx, .txt, etc. 
+- Archives: .zip, .tar, .7z, etc.
+If a file doesn’t match known types, it is labeled "other".
+
+### Argument Description
+- `--mount`
+_(mandatory)_ Root directory to scan
+- `--hostname`
+_(mandadory)_ The name of the host to which this data belongs
+- `--restorepoint-id`
+_(mandatory)_ The Veeam restore point ID
+- `--rp-timestamp`
+_(mandatory)_ Timestamp of the restore point
+- `--Filetypes`
+_(optional)_ Comma-separated file extensions to scan
+- `--workers`
+_(optional)_ Number of parallel worker processes to use (default: half of CPU cores)
+- `--maxsize`
+_(optional)_ Max file size in MB to include (e.g., skip huge ISO files)
+- `--exclude`
+_(optional)_ Comma-separated list of folder names to skip 
+- `--db`
+_(optional)_ SQLite DB path (default is file_index.db)
+
+## analyzer.py script (Version 2.0)
+This script analyzes previously indexed file metadata stored in file_index.db. It compares the data against known malware hashes from badfiles.db and checks for suspicious or changing file patterns across restore points. This helps to detect possible malware infections, tampering, or unusual activity on backup data.
+
 ## Possible improvements
 - Bloom filter support to improve memory efficiency when handling large hash sets.
 - Mark the scanned restore point as infected in Veeam Backup & Replication.
