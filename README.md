@@ -41,7 +41,7 @@ A minimal Docker setup is provided to run the Streamlit dashboard as a container
 ## 🛠️ Technical Details of the Scripts
 ## Version Information
 ~~~~
-Version: 1.0 (June 2025)
+Version: 1.0 (June 23 2025)
 Requires: Veeam Backup & Replication v12.3.1 & Linux & Python 3.1+
 Author: Stephan "Steve" Herzig
 ~~~~
