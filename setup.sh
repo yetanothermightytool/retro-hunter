@@ -166,7 +166,7 @@ read -p "❓ Do you want to install and launch the Streamlit UI now? [y/N]: " CO
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
    echo ""
    echo "🧹 Cleaning up import files..."
-   rm -f import_lolbas.py lolbin.csv import_malwarebazaar.py malwarebazaar.csv setup.sh create-fernet-files.py
+   rm -f import_lolbas.py lolbin.csv malwarebazaar.csv setup.sh create-fernet-files.py
    rm -rf Images
    echo "🚫 Streamlit UI setup was skipped by user choice."
    echo "🛡️ You can still run Retro Hunter manually via: sudo ./retro-hunter.py"
@@ -220,7 +220,7 @@ fi
 # === END. Cleanup ===
 echo "🧹 Cleaning up files..."
 echo "🧹 Cleaning up import files..."
-rm -f import_lolbas.py lolbin.csv import_malwarebazaar.py malwarebazaar.csv setup.sh create-fernet-files.py
+rm -f import_lolbas.py lolbin.csv malwarebazaar.csv setup.sh create-fernet-files.py
 rm -rf Images
 echo ""
 echo "+------------------------------------------+"
