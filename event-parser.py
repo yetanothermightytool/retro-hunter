@@ -7,10 +7,12 @@ from Evtx.Evtx import Evtx
 from xml.etree import ElementTree as ET
 
 # -------------------------------------
-# Important Event IDs to monitor - Criticality High or Medium to High
+# Important events to monitor - Criticality High or Medium to High
 # List: https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/appendix-l--events-to-monitor
+# and PowerShell Event IDs
 # -------------------------------------
 DEFAULT_EVENT_IDS = [ 4618, 4649, 4719, 4765, 4766, 4794, 4897, 4964, 5124, 1102 ]
+POWERSHELL_EVENT_IDS = [800, 4104]
 
 def parse_args():
    parser = argparse.ArgumentParser(description="Parse Windows EVTX logs into SQLite")
@@ -20,14 +22,13 @@ def parse_args():
    parser.add_argument("--rp-timestamp", required=True, help="RestorePoint timestamp")
    parser.add_argument("--rp-status", required=True, help="RestorePoint malware status")
    parser.add_argument("--db", default="file_index.db", help="SQLite database path")
-   parser.add_argument("--logfile", default="Security.evtx", help="EVTX log file name to parse")
+   parser.add_argument("--logfile", default="Security.evtx", help="Comma-separated EVTX log file names to parse (e.g. 'Security.evtx,Windows PowerShell.evtx'")
    parser.add_argument("--event-ids", help="Comma-separated list of Event IDs to include")
    parser.add_argument("--days", type=int, help="How many days back from restorepoint to include")
    parser.add_argument("--limit", type=int, help="Max number of entries to parse")
    parser.add_argument("--verbose", action="store_true", help="Show debug info")
    return parser.parse_args()
 
-# -------------------------------------
 def init_db(path):
    conn = sqlite3.connect(path)
    cur = conn.cursor()
@@ -50,7 +51,6 @@ def init_db(path):
    conn.commit()
    conn.close()
 
-# -------------------------------------
 def parse_evtx(file_path, hostname, restorepoint_id, rp_timestamp, rp_status, allowed_ids, days_back, limit, verbose):
    events = []
    count = 0
@@ -140,34 +140,46 @@ def store_events(db_path, events):
    conn.close()
    return inserted_count
 
+# The magic happens here!
 def main():
    args = parse_args()
-  # Currently defaults to Security Log 
-  evtx_path = os.path.join(args.mount, "Windows", "System32", "winevt", "Logs", args.logfile)
-   if not os.path.isfile(evtx_path):
-       print(f"❌ EVTX file not found: {evtx_path}")
-       return
+
+   # Unterstützte Logfiles aus --logfile einlesen (mehrere durch Komma getrennt)
+   logfiles = [l.strip() for l in args.logfile.split(",") if l.strip()]
 
    init_db(args.db)
-   if args.verbose:
-       print(f"🔍 Parsing {evtx_path}...")
 
-   allowed_ids = [int(e.strip()) for e in args.event_ids.split(",")] if args.event_ids else DEFAULT_EVENT_IDS
+   all_events = []
+   for logfile in logfiles:
+       evtx_path = os.path.join(args.mount, "Windows", "System32", "winevt", "Logs", logfile)
+       if not os.path.isfile(evtx_path):
+           print(f"❌ EVTX file not found: {evtx_path}")
+           continue
 
-   events = parse_evtx(
-       evtx_path,
-       args.hostname,
-       args.restorepoint_id,
-       args.rp_timestamp,
-       args.rp_status,
-       allowed_ids,
-       args.days,
-       args.limit,
-       args.verbose
-   )
+       if args.verbose:
+           print(f"🔍 Parsing {evtx_path}...")
 
-   inserted = store_events(args.db, events)
-   print(f"✅ Parsed and stored {inserted} events into {args.db}")
+       # PowerShell-spezifische IDs (4104: ScriptBlock logging, 800: Pipeline execution)
+       if "PowerShell" in logfile:
+           used_ids = [4104, 800]
+       else:
+           used_ids = [int(e.strip()) for e in args.event_ids.split(",")] if args.event_ids else DEFAULT_EVENT_IDS
+
+       events = parse_evtx(
+           evtx_path,
+           args.hostname,
+           args.restorepoint_id,
+           args.rp_timestamp,
+           args.rp_status,
+           used_ids,
+           args.days,
+           args.limit,
+           args.verbose
+       )
+       all_events.extend(events)
+
+   inserted = store_events(args.db, all_events)
+   print(f"✓ Parsed and stored {inserted} events into {args.db}")
 
 if __name__ == "__main__":
    main()
