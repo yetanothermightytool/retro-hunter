@@ -143,8 +143,6 @@ def store_events(db_path, events):
 # The magic happens here!
 def main():
    args = parse_args()
-
-   # Unterstützte Logfiles aus --logfile einlesen (mehrere durch Komma getrennt)
    logfiles = [l.strip() for l in args.logfile.split(",") if l.strip()]
 
    init_db(args.db)
