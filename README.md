@@ -28,6 +28,8 @@ Retro Hunter is a lightweight Python-based toolkit that scans Veeam Backup & Rep
 ## 🚀 Quickstart (tl;dr)
 Run the setup script, and start scanning! Execute `setup.sh` with the path to your `malwarebazaar.csv` file to initialize the environment and databases. Once done, you can use `retro-hunter.py` to analyze mounted restore points for malware, LOLBAS, and YARA hits, or to index all executables and scripts. Finally, open the dashboard at https://<your-hostname>:8501 to explore the results.
 
+**Important** You must add the Linux server on which this script is executed to the [backup infrastructure](https://helpcenter.veeam.com/docs/backup/vsphere/add_linux_server.html).
+
 Something missing? Check the [Coming Soon section](#coming-soon).
 
 ## ⚙️ Setup Process
@@ -61,6 +63,7 @@ The following Python modules are not part of the standard library and must be in
 - cryptography (for cryptography.fernet.Fernet)
 - colorama
 - yara (usually installed via yara-python)
+- python-evtx for Windows Event Log scanning (V1.1)
 - and more for the Docker container (requirements.txt)
 
 ## YARA Rules
