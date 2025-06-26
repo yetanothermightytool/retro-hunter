@@ -11,8 +11,8 @@ st.set_page_config(page_title="Retro Hunter - Security Analysis Dashboard", layo
 
 # --- EVENT ID CLASSIFICATION ---
 def classify_event_severity(event_id):
-   high_ids = {1102, 4104, 4618, 4649, 4719, 4765, 4766, 4794, 4897, 4964, 5124}
-   medium_high_ids = {800}
+   high_ids = {4104, 4618, 4649, 4719, 4765, 4766, 4794, 4897, 4964, 5124}
+   medium_high_ids = {800, 1102}
    if event_id in high_ids:
        return "High"
    elif event_id in medium_high_ids:
