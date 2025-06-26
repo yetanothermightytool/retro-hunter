@@ -45,7 +45,7 @@ A minimal Docker setup is provided to run the Streamlit dashboard as a container
 ## 🛠️ Technical Details of the Scripts
 ## Version Information
 ~~~~
-Version: 1.0 (June 23 2025)
+Version: 1.1 (June 26 2025)
 Requires: Veeam Backup & Replication v12.3.1 & Linux & Python 3.1+
 Author: Stephan "Steve" Herzig
 ~~~~
@@ -63,7 +63,7 @@ The following Python modules are not part of the standard library and must be in
 - cryptography (for cryptography.fernet.Fernet)
 - colorama
 - yara (usually installed via yara-python)
-- python-evtx for Windows Event Log scanning (V1.1)
+- python-evtx for Windows Event Log scanning (V1.1) **🔴 NEW**
 - and more for the Docker container (requirements.txt)
 
 ## YARA Rules
@@ -96,7 +96,14 @@ _(optional)_ The number of workers to use for the scanning process. (Default 4)
 - `--iscsi`
 _(optional)_ Present the backups using iSCSI. Only filesystems with the NTFS, ext4 and xfs filesystem can be scanned.
 - `--yaramode`
-_(optional)_ YARA scan mode - off (default), all, suspicious (scans only files that show indicators of compromise), content (Targets commont document/text files to detecte sensitive data patterns (e.g. PII, credentials) 
+_(optional)_ YARA scan mode - off (default), all, suspicious (scans only files that show indicators of compromise), content (Targets commont document/text files to detecte sensitive data patterns (e.g. PII, credentials)
+- `--evtscan`
+_(optional)_ Enables scanning of Windows Event Logs **🔴 NEW**
+- `--evtlogs`
+_(optional)_ Comma-separated list of EVTX log files to scan  **🔴 NEW**
+- `--days`
+_(optional)_ Limit EVTX parsing to events within N days before restore point timestamp  **🔴 NEW**
+
 
 ### Examples
 Some examples of how the script can be executed.
@@ -119,6 +126,9 @@ sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi
 | 🔬 YARA Matches | Files identified via YARA rules |
 | 📂 Total Files | Number of indexed files |
 | 🌀 Multi-use Hashes | SHA256 hashes that appear with multiple filenames (possible masquerading) |
+| 🛑 High Severity Events | Number of critical security-related events (e.g., policy changes, log clears and more)  **🔴 NEW** |
+| ⚠️ Medium to High Events | Number of optentially suspicious events requiringfurther review   **🔴 NEW** |
+
 
 📊 Table Overview
 | Table  | Description |
@@ -130,6 +140,8 @@ sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi
 | 📂 Scripts in Temp/Download Directories | Detects script files (e.g., .ps1, .sh, .bat) in temporary or download paths – often used for staging attacks |
 | 🌀 Multi-use Hashes (Same SHA256, multiple filenames) | Highlights SHA-256 hashes used with different filenames. May indicate renamed or disguised malware |
 | ⚙️ System Process Names Outside System32 | Known system process names (e.g., svchost.exe, lsass.exe) found outside trusted paths like System32. Strong indicator of abuse or masquerading |
+| 📑 Windows Event Log Entries | Parsed entries from Windows Event Log files (Security & PowerShell) for forensic and threat analysis  **🔴 NEW** |
+
 
 ## The Scripts
 ### Scanning Process Details
@@ -205,13 +217,24 @@ _(optional)_ Comma-separated list of folder names to skip
 - `--db`
 _(optional)_ SQLite DB path (default is file_index.db)
 
+## event-parser.py script **🔴 NEW** 
+The event-parser.py script extracts and analyzes security-related events from Windows event logs. It focuses on a defined set of Event IDs (Security & PowerShell Event Log) known to indicate potential threats, policy changes, or suspicious PowerShell usage.
+
+• Windows Security Event Ids (High Severity)
+4618, 4649, 4719, 4765, 4766, 4794, 4897, 4964, 5124, 1102
+
+The list is based on official Microsoft recommendations [Microsoft: Events to Monitor](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/appendix-l--events-to-monitor).
+
+• PowerShell Events Ids
+800, 4104
+
+These events are parsed, stored in the database, and visualized in the dashboard with severity classifications (High / Medium to High).
+
 ## analyzer.py script
 This script analyzes previously indexed file metadata stored in file_index.db. It compares the data against known malware hashes from badfiles.db and checks for suspicious or changing file patterns across restore points. This helps to detect possible malware infections, tampering, or unusual activity on backup data.
 
 ## Coming Soon
-- Scale-Out Backup Repository Support
-- Scan/Search Windows Event Log entries (Security Event Log first)
-- Updated Dashboard
+- Windows Registry Scan
 
 ## Possible improvements
 - Bloom filter support to improve memory efficiency when handling large hash sets.
@@ -224,6 +247,10 @@ This script analyzes previously indexed file metadata stored in file_index.db. I
 - When mounting NTFS disks, it’s important to know that Ubuntu (from version 22.04 and newer) uses the built-in ntfs3 kernel driver, which provides better performance and more stable access. In contrast, Rocky Linux and other RHEL-based systems usually rely on the older ntfs-3g driver through FUSE, which is slower because it runs in user space. This means that the way NTFS is handled can vary depending on the system. It is technically possible to upgrade Rocky Linux to a newer Kernel (5.15 or higher) to support the native ntfs3 driver. Mounting NTFS volumes works well when using the -t ntfs parameter, especially with iSCSI attached disks. FUSE is not working and there are currently no efforts to conduct further research in this area.
 
 ## Version History
+- 1.1 (June 26 2025)
+  - repo2scan now supports Scale-Out Backup Repositories
+  - Store specific Windows Event Log entries (Security & PowerShell Event log first)
+  - Dashboard Update
 - 1.0 (June 2025)
   - Initial version
 
