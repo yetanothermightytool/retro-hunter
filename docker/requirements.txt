@@ -1,4 +1,2 @@
-streamlit
 pandas
-tabulate
-colorama
+streamlit
