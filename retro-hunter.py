@@ -163,7 +163,34 @@ def run_store(mount_path, host2scan, rp_id, rp_ts, rp_status, db_path):
     print(f"[{host2scan}] 💾 Indexing files from mount {mount_path}")
     subprocess.run(cmd)
 
-# Run iSCSI Scan 
+# Run Event Parser Script
+def run_evtscan(mount_path, host2scan, rp_id, rp_ts, rp_status, db_path, days=None, evtlogs=None):
+   evt_script = "./event-parser.py"
+   if not os.path.exists(evt_script):
+       print("❌ event-parser.py not found.")
+       return
+
+   logs_to_scan = ["Security.evtx"]  # Defaul fallback to Security Log
+   if evtlogs:
+       logs_to_scan = [log.strip() for log in evtlogs.split(",") if log.strip()]
+
+   for logname in logs_to_scan:
+       cmd = [
+           "python3", evt_script,
+           "--mount", str(mount_path),
+           "--hostname", str(host2scan),
+           "--restorepoint-id", str(rp_id),
+           "--rp-timestamp", str(rp_ts),
+           "--rp-status", str(rp_status),
+           "--db", str(db_path),
+           "--logfile", str(logname)
+       ]
+       if days:
+           cmd.extend(["--days", str(days)])
+       print(f"[{host2scan}] 📜 Parsing {logname} from mount {mount_path}")
+       subprocess.run(cmd)
+
+# Run iSCSI Scan
 def run_iscsi_scan(mount_id, session_info, host2scan, workers, yaramode, args, rp_id, rp_ts, rp_status, db_path, csv_path=None):
     before = subprocess.check_output("lsblk -nd -o NAME", shell=True).decode().splitlines()
     ip = session_info["serverIps"][0]
@@ -204,6 +231,8 @@ def run_iscsi_scan(mount_id, session_info, host2scan, workers, yaramode, args, r
             run_scanner(mnt_path, host2scan, workers, yaramode, rp_id, rp_ts, rp_status, args.db, args.csv)
         if args.store:
             run_store(mnt_path, host2scan, rp_id, rp_ts, rp_status, args.db)
+        if args.evtscan:
+           run_evtscan(mnt_path, host2scan, rp_id, rp_ts, rp_status, args.db, args.days, args.evtlogs)
     time.sleep(10)
 
     print(f"[{host2scan}] 🧹 Cleaning up...")
@@ -264,7 +293,7 @@ def do_mount_scan(token, scanhost, local_ip, rp_id, hostname, use_iscsi, workers
        for disk in disks:
             all_mounts.extend(disk.get("mountPoints", []))
 
-# ⛑️ Fallback if there are no mount points.
+# Fallback if there are no mount points.
        if not all_mounts:
            fallback_mount = mount_info.get("info", {}).get("mountPath")
            if fallback_mount and os.path.exists(fallback_mount):
@@ -283,6 +312,12 @@ def do_mount_scan(token, scanhost, local_ip, rp_id, hostname, use_iscsi, workers
                run_scanner(path, hostname, workers, yaramode, rp_id, rp_ts, rp_status, args.db, args.csv)
            if args.store:
                run_store(path, hostname, rp_id, rp_ts, rp_status, args.db)
+           evtx_file = os.path.join(path, "Windows", "System32", "winevt", "Logs", "Security.evtx")
+           if os.path.exists(evtx_file):
+               if args.evtscan:
+                   run_evtscan(path, hostname, rp_id, rp_ts, rp_status, args.db, args.days, args.evtlogs)
+           #else:
+               #print(f"[{hostname}] ⚠️ Skipping EVTX scan – no Security.evtx at {evtx_file}")
     time.sleep(10)
     print(f"[{hostname}] 🛑 Unpublishing...")
     time.sleep(3)
@@ -302,6 +337,9 @@ def main():
     parser.add_argument("--store", action="store_true", help="Run store.py after mount")
     parser.add_argument("--db", default="file_index.db", help="Path to SQLite DB for scan results")
     parser.add_argument("--csv", help="Save results to CSV file (optional)")
+    parser.add_argument("--evtscan", action="store_true", help="Run event-parser.py after mount")
+    parser.add_argument("--evtlogs", help="Comma-separated lost of EVTX log files to scan")
+    parser.add_argument("--days", type=int, help="Optional: Limit EVTX parsing to events within N days before restore point")
     args = parser.parse_args()
 
     username = "__REPLACE_REST_API_USER__"
@@ -317,13 +355,25 @@ def main():
     if args.repo2scan:
         print(f"📦 Looking up repository: {args.repo2scan}")
         all_repos = get_veeam_rest_api(api_url, "v1/backupInfrastructure/repositories", token)
+
         repo = next((r for r in all_repos["data"] if r["name"].strip() == args.repo2scan.strip()), None)
         if not repo:
-            print("❌ Repository not found.")
-            return token
+            all_sobr = get_veeam_rest_api(api_url, "v1/backupInfrastructure/scaleOutRepositories", token)
+            sobr = next((s for s in all_sobr["data"] if s["name"].strip() == args.repo2scan.strip()), None)
+            if not sobr:
+                print("❌ Repository not found (neither standard nor scale-out).")
+                return token
+            print("📦 Found Scale-Out Repository.")
+            extents = [e["id"] for e in sobr.get("performanceTier", {}).get("performanceExtents", [])]
+            if not extents:
+                print("❌ No extents found in Scale-Out Repository.")
+                return token
+            backups = get_veeam_rest_api(api_url, "v1/backups", token)
+            backup_ids = [b["id"] for b in backups["data"] if b["repositoryId"] == sobr["id"]]
+        else:
+            backups = get_veeam_rest_api(api_url, "v1/backups", token)
+            backup_ids = [b["id"] for b in backups["data"] if b["repositoryId"] == repo["id"]]
 
-        backups = get_veeam_rest_api(api_url, "v1/backups", token)
-        backup_ids = [b["id"] for b in backups["data"] if b["repositoryId"] == repo["id"]]
         hostnames = []
         for bid in backup_ids:
             rps = get_veeam_rest_api(api_url, "v1/restorePoints", token, params={"backupIdFilter": bid})
