@@ -15,7 +15,7 @@ fi
 # === PYTHON MODULE CHECK ===
 echo "🐍 Checking required Python modules..."
 # Nur nicht-standardmäßige Module prüfen
-REQUIRED_MODULES=(colorama requests keyring dateutil)
+REQUIRED_MODULES=(colorama requests keyring dateutil Evtx)
 MISSING_MODULES=()
 for module in "${REQUIRED_MODULES[@]}"; do
    python3 -c "import $module" 2>/dev/null || MISSING_MODULES+=("$module")
@@ -28,10 +28,6 @@ if [ ${#MISSING_MODULES[@]} -ne 0 ]; then
    echo "💡 You can install them with:"
    echo "   pip3 install ${MISSING_MODULES[*]}"
    echo ""
-   if [[ " ${MISSING_MODULES[*]} " =~ " yara-python " ]]; then
-       echo "⚠️  Note: 'yara-python' may require libyara to be installed separately:"
-       echo "   Debian/Ubuntu: sudo apt install libyara-dev"
-   fi
    exit 1
 else
    echo "✅ All required Python modules are available."
@@ -166,7 +162,7 @@ read -p "❓ Do you want to install and launch the Streamlit UI now? [y/N]: " CO
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
    echo ""
    echo "🧹 Cleaning up import files..."
-   rm -f import_lolbas.py lolbin.csv malwarebazaar.csv setup.sh create-fernet-files.py
+   rm -f import_lolbas.py lolbin.csv import_malwarebazaar.py malwarebazaar.csv setup.sh create-fernet-files.py
    rm -rf Images
    echo "🚫 Streamlit UI setup was skipped by user choice."
    echo "🛡️ You can still run Retro Hunter manually via: sudo ./retro-hunter.py"
@@ -220,7 +216,7 @@ fi
 # === END. Cleanup ===
 echo "🧹 Cleaning up files..."
 echo "🧹 Cleaning up import files..."
-rm -f import_lolbas.py lolbin.csv malwarebazaar.csv setup.sh create-fernet-files.py
+rm -f import_lolbas.py lolbin.csv import_malwarebazaar.py malwarebazaar.csv setup.sh create-fernet-files.py
 rm -rf Images
 echo ""
 echo "+------------------------------------------+"
