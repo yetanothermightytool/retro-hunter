@@ -167,8 +167,6 @@ def worker(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_pa
 
            if lookup_name in lol_paths:
                expected = normalize(lol_paths[lookup_name])
-
-
                try:
                    expected_tail = os.path.normcase(
                        lol_paths[lookup_name].lower().replace("\\", os.sep).replace("/", os.sep)
@@ -177,10 +175,11 @@ def worker(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_pa
                        norm_path.lower().replace("\\", os.sep).replace("/", os.sep)
                    )
                    if expected_tail not in actual_path:
+                       file_hash = file_hash or sha256_file(path)  # Falls noch nicht berechnet
                        msg = f"⚠️  LOLBAS OUT OF PLACE: {path} (expected {lol_paths[lookup_name]})"
                        print(f"\n{Fore.MAGENTA}{Style.BRIGHT}{msg}")
                        log_message(msg, logfile)
-                       result_queue.put((path, None, "lolbas_out_of_place"))
+                       result_queue.put((path, file_hash, "lolbas_out_of_place"))  # SHA256 hinzugefügt
                        stats_queue.put("lolbas")
                        suspicious = True
                except Exception as e:
