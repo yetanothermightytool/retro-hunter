@@ -45,7 +45,7 @@ A minimal Docker setup is provided to run the Streamlit dashboard as a container
 ## 🛠️ Technical Details of the Scripts
 ## Version Information
 ~~~~
-Version: 1.1 (June 26 2025)
+Version: 1.2 (July 8 2025)
 Requires: Veeam Backup & Replication v12.3.1 & Linux & Python 3.1+
 Author: Stephan "Steve" Herzig
 ~~~~
@@ -140,6 +140,7 @@ sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi
 | 📂 Scripts in Temp/Download Directories | Detects script files (e.g., .ps1, .sh, .bat) in temporary or download paths – often used for staging attacks |
 | 🌀 Multi-use Hashes (Same SHA256, multiple filenames) | Highlights SHA-256 hashes used with different filenames. May indicate renamed or disguised malware |
 | ⚙️ System Process Names Outside System32 | Known system process names (e.g., svchost.exe, lsass.exe) found outside trusted paths like System32. Strong indicator of abuse or masquerading |
+| 🧠 High Entropy Files in Suspicious Paths | Identifies files with high entropy (>7.5), indicating possible encryption or obfuscation, located in suspicious directories |
 | 📑 Windows Event Log Entries | Parsed entries from Windows Event Log files (Security & PowerShell) for forensic and threat analysis  **🔴 NEW** |
 
 
@@ -184,7 +185,7 @@ _(optional)_ Path to logfile for matches (might get removed)
 _(optional)_ YARA scan mode (off, all, suspicious, content)
 
 ## store.py script details
-This script scans the mounted file system and collects detailed metadata for selected files. It calculates a SHA-256 hash for each file and stores all data in a local SQLite database. If the database does not exist, it is automatically created during the first run. The metadata stored includes file name, path, size, timestamps, extension, file type, and whether the file is executable. Each entry is tagged with a hostname, restore point ID, and timestamp, making later comparisons across backups possible.
+This script scans the mounted file system and collects detailed metadata for selected files (DEFAULT_BINARY_EXTS list or --filetypes is used). It calculates a SHA-256 hash for each file and stores all data in a local SQLite database. If the database does not exist, it is automatically created during the first run. The metadata stored includes file name, path, size, timestamps, extension, file type, and whether the file is executable. Each entry is tagged with a hostname, restore point ID, and timestamp, making later comparisons across backups possible.
 The script supports parallel processing and can speed up scanning using multiple CPU cores. Filters can be applied to limit which files are scanned: only specific file types (like .exe or .dll), a maximum file size, and folders to exclude. 
 The script extracts key information for each file that matches the filters and calculates its SHA-256 hash. All collected data is inserted into the database, unless an entry with the same hostname and hash already exists.
 
@@ -196,6 +197,19 @@ The script detects files based on their extensions:
 - Documents: .pdf, .docx, .txt, etc. 
 - Archives: .zip, .tar, .7z, etc.
 If a file doesn’t match known types, it is labeled "other".
+
+### Entropy Calculation
+Entropy is calculated using the Shannon entropy formula, based on the distribution of byte values in the file. The script reads the full content of each file and computes how evenly the byte values (0–255) are distributed, which reflects the randomness of the data. Highly random content is typical for encrypted, packed, or obfuscated files—techniques often used by malware to avoid detection.
+When such high-entropy files are found in directories like AppData, ProgramData, Temp, Public, Downloads, or Recycle.Bin, they are flagged as potentially suspicious. These locations are frequently abused by attackers to stage or hide payloads, since they are writable and often excluded from routine checks. By correlating entropy levels with file system paths, the dashboard view aims to surface files that deserve further analysis, even if they have not been flagged by signature-based scanners.
+
+### Entropy Classification Range
+| Entropy Range | Description                                                                 |
+|---------------|-----------------------------------------------------------------------------|
+| 0.0 – 3.5     | Very low entropy – likely plain text, config files, or uncompressed data.  |
+| 3.5 – 6.5     | Medium entropy – common for standard executables, DLLs, scripts, etc.      |
+| 6.5 – 7.5     | Elevated entropy – may indicate mild compression or some obfuscation.      |
+| > 7.5         | High entropy – potentially packed, encrypted, or malicious (e.g., malware).|'
+
 
 ### Argument Description
 - `--mount`
@@ -247,6 +261,12 @@ This script analyzes previously indexed file metadata stored in file_index.db. I
 - When mounting NTFS disks, it’s important to know that Ubuntu (from version 22.04 and newer) uses the built-in ntfs3 kernel driver, which provides better performance and more stable access. In contrast, Rocky Linux and other RHEL-based systems usually rely on the older ntfs-3g driver through FUSE, which is slower because it runs in user space. This means that the way NTFS is handled can vary depending on the system. It is technically possible to upgrade Rocky Linux to a newer Kernel (5.15 or higher) to support the native ntfs3 driver. Mounting NTFS volumes works well when using the -t ntfs parameter, especially with iSCSI attached disks. FUSE is not working and there are currently no efforts to conduct further research in this area.
 
 ## Version History
+- 1.2 (July 8th 2025)
+  - The scanner.py now also saves the SHA256 value for found LOLBAS files
+  - Streamlit Dashboard date filter is now applied to all tables showing the restore point date
+  - Streamlit Dashboard bugfixes (empty tables)
+  - The store.py script now performs an entropy analysis (Shannon formula)
+  - setup.sh script bugfixes
 - 1.1 (June 26 2025)
   - repo2scan now supports Scale-Out Backup Repositories
   - Store specific Windows Event Log entries (Security & PowerShell Event log first)
