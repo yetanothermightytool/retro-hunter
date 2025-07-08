@@ -12,21 +12,21 @@ import math
 # Number of files processed per worker
 CHUNK_SIZE = 500
 
-# Those extents are included in the store process									
+# Those extents are included in the store process
 DEFAULT_BINARY_EXTS = [
    ".exe", ".dll", ".sys", ".msi", ".bat", ".cmd", ".ps1",
    ".sh", ".bin", ".run", ".so", ".out", ".deb", ".rpm",
    ".jar", ".pyc", ".apk", ".com"
 ]
 
-# Extents to classify the filetype. Will be stored in the database																  
+# Extents to classify the filetype. Will be stored in the database                                                                     
 EXECUTABLE_EXTS = {'.exe', '.dll', '.bin', '.so', '.elf', '.sh', '.bat', '.cmd', '.ps1', '.apk', '.com'}
 SCRIPT_EXTS     = {'.py', '.js', '.vbs', '.pl', '.rb', '.ps1', '.sh', '.bat', '.cmd'}
 IMAGE_EXTS      = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff'}
 DOCUMENT_EXTS   = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.rtf'}
 ARCHIVE_EXTS    = {'.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz'}
 
-# Classifies the file type based on its extension											 
+# Classifies the file type based on its extension
 def detect_filetype(extension, is_exec=False):
    ext = extension.lower()
    if ext in EXECUTABLE_EXTS or (not ext and is_exec):
@@ -42,7 +42,7 @@ def detect_filetype(extension, is_exec=False):
    else:
        return "other"
 
-# Parses command-line arguments and returns them as an object (New approach)																			
+# Parses command-line arguments and returns them as an object (New approach)
 def parse_args():
    parser = argparse.ArgumentParser(description="Index binary files into SQLite")
    parser.add_argument("--mount", required=True)
@@ -163,7 +163,7 @@ def get_files(root, filetypes, maxsize, excludes):
                result.append(full_path)
    return result
 
-# Checks if the file is marked as executable in the file system														   
+# Checks if the file is marked as executable in the file system                                                                        
 def is_executable(path):
    try:
        st = os.stat(path)
@@ -204,7 +204,7 @@ def extract_metadata(path):
    except:
        return None
 
-# Hashes and processes each file and sends metadata to result queue.																
+# Hashes and processes each file and sends metadata to result queue.
 def worker(chunk_queue, result_queue, hostname, restorepoint_id, rp_timestamp, rp_status, db_path):
    conn = sqlite3.connect(db_path)
    cur = conn.cursor()
@@ -217,8 +217,7 @@ def worker(chunk_queue, result_queue, hostname, restorepoint_id, rp_timestamp, r
        for file_path in chunk:
            meta = extract_metadata(file_path)
            if meta and meta["sha256"]:
-               # Check if already exists in DB
-			   cur.execute("SELECT 1 FROM files WHERE hostname = ? AND sha256 = ?", (hostname, meta["sha256"]))
+               cur.execute("SELECT 1 FROM files WHERE hostname = ? AND sha256 = ?", (hostname, meta["sha256"]))
                if cur.fetchone():
                    continue # Skip duplicate
                meta.update({
@@ -260,7 +259,7 @@ def write_results(result_queue, db_path):
    conn.close()
    return inserted
 
-# The magic starts here					   
+# The magic starts here
 def main():
    args = parse_args()
    filetypes = [ft.strip().lower() for ft in args.filetypes.split(",")] if args.filetypes else DEFAULT_BINARY_EXTS
