@@ -248,7 +248,11 @@ These events are parsed, stored in the database, and visualized in the dashboard
 This script analyzes previously indexed file metadata stored in file_index.db. It compares the data against known malware hashes from badfiles.db and checks for suspicious or changing file patterns across restore points. This helps to detect possible malware infections, tampering, or unusual activity on backup data.
 
 ## Coming Soon
-- Windows Registry Scan
+- For executable files with high entropy, store.py extracts additional metadata including file type signatures (Magic) and Portable Executable (PE)
+- Streamlit dashboard displays High-Entropy Executables with PE Metadata
+- YARA rule generator in the Streamlit dashboard on High-Entropy Executable, enabling security teams to create targeted detection rule for hunting!
+- Optimizations of the store.py script
+- Windows Registry Scan (Ready to use but still researching)
 
 ## Possible improvements
 - Bloom filter support to improve memory efficiency when handling large hash sets.
