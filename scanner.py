@@ -10,6 +10,7 @@ import csv
 import time
 import sys
 from datetime import datetime
+import math
 import yara
 
 init(autoreset=True)
@@ -40,7 +41,7 @@ def parse_args():
    parser.add_argument("--db", help="Path to SQLite database to store findings")
    parser.add_argument("--verbose", action="store_true")
    parser.add_argument("--logfile")
-   parser.add_argument("--yara", choices=["off", "all", "suspicious", "content"], default="off")
+   parser.add_argument("--yara", choices=["off", "all", "suspicious", "content", "highentropy"], default="off")
    parser.add_argument("--hostname")
    parser.add_argument("--restore_point_id")
    parser.add_argument("--rp_timestamp")
@@ -98,6 +99,21 @@ def log_message(msg, logfile):
    if logfile:
        with open(logfile, "a", encoding="utf-8") as f:
            f.write(f"{datetime.now().isoformat()} {msg}\n")
+
+def calculate_entropy(filepath):
+   try:
+       with open(filepath, 'rb') as f:
+           data = f.read(204800)  # Nur die ersten 200 KB
+       if not data:
+           return 0.0
+       entropy = 0
+       for x in range(256):
+           p_x = data.count(bytes([x])) / len(data)
+           if p_x > 0:
+               entropy -= p_x * math.log2(p_x)
+       return round(entropy, 2)
+   except:
+       return None
 
 def get_files(root, filetypes, maxsize, excludes):
    result = []
@@ -164,6 +180,9 @@ def worker(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_pa
            norm_path = normalize(path)
            file_hash = sha256_file(path)
            suspicious = False
+           entropy = None
+           if yara_mode == "highentropy":
+               entropy = calculate_entropy(path)
 
            if lookup_name in lol_paths:
                expected = normalize(lol_paths[lookup_name])
@@ -175,7 +194,7 @@ def worker(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_pa
                        norm_path.lower().replace("\\", os.sep).replace("/", os.sep)
                    )
                    if expected_tail not in actual_path:
-                       file_hash = file_hash or sha256_file(path)  # Falls noch nicht berechnet
+                       file_hash = file_hash or sha256_file(path)
                        msg = f"⚠️  LOLBAS OUT OF PLACE: {path} (expected {lol_paths[lookup_name]})"
                        print(f"\n{Fore.MAGENTA}{Style.BRIGHT}{msg}")
                        log_message(msg, logfile)
@@ -203,7 +222,13 @@ def worker(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_pa
                log_message(msg, logfile)
                stats_queue.put("error")
 
-           do_yara = yara_rules and (yara_mode in ("all", "content") or (yara_mode == "suspicious" and suspicious))
+           do_yara = yara_rules and (
+               yara_mode == "all"
+               or (yara_mode == "content" and any(path.lower().endswith(ft) for ft in CONTENT_FILETYPES))
+               or (yara_mode == "suspicious" and suspicious)
+               or (yara_mode == "highentropy" and entropy is not None and entropy >= 7.5)
+           )
+
            if do_yara:
                print(f"{Fore.BLUE}🔬 YARA scan on: {path}")
                try:
