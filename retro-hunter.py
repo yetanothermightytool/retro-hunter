@@ -332,7 +332,7 @@ def main():
     parser.add_argument("--iscsi", action="store_true", help="Use iSCSI instead of FUSE")
     parser.add_argument("--maxhosts", type=int, default=1, help="Max parallel hosts to scan (default 1)")
     parser.add_argument("--workers", default=4, help="Number of workers for scanning (default 4)")
-    parser.add_argument("--yaramode", default="off", help="YARA scan mode to use. Options are off (default), all, suspicious, content")
+    parser.add_argument("--yaramode", default="off", help="YARA scan mode to use. Options are off (default), all, suspicious, content, highentropy")
     parser.add_argument("--scan", action="store_true", help="Run scanner.py after mount")
     parser.add_argument("--store", action="store_true", help="Run store.py after mount")
     parser.add_argument("--db", default="file_index.db", help="Path to SQLite DB for scan results")
