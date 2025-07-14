@@ -45,7 +45,7 @@ A minimal Docker setup is provided to run the Streamlit dashboard as a container
 ## 🛠️ Technical Details of the Scripts
 ## Version Information
 ~~~~
-Version: 1.2 (July 8 2025)
+Version: 1.3 (July 14th 2025)
 Requires: Veeam Backup & Replication v12.3.1 & Linux & Python 3.1+
 Author: Stephan "Steve" Herzig
 ~~~~
@@ -63,14 +63,17 @@ The following Python modules are not part of the standard library and must be in
 - cryptography (for cryptography.fernet.Fernet)
 - colorama
 - yara (usually installed via yara-python)
-- python-evtx for Windows Event Log scanning (V1.1) **🔴 NEW**
+- python-evtx for Windows Event Log scanning 
 - and more for the Docker container (requirements.txt)
 
 ## YARA Rules
 Save additional YARA rule files in the script folder directory yara_rules. (File extensions .yar and .yara). A sample rule is stored in the yara_rules directory.
 
+### YARA Rules Generator
+The Streamlit Dashboard includes a YARA rule generator that creates rules based on stored executables with high entropy and PE metadata.
+
 ## Database
-The script loads the contents of the databases into memory during runtime. Currently, there are two central databases involved: One stores known LOLBAS tools and malware hashes (badfiles.db), while the other (file_index.db) is used to keep track of scanned or stored files and their metadata.
+The script loads the contents of the databases into memory during runtime. Currently, there are two central databases involved: One stores known LOLBAS tools and malware hashes (badfiles.db), while the other (file_index.db) is used to keep track of scanned or stored files and their metadata and extracted Microsoft Windows Event-Log events.
 
 The malwarebazaar table in badfiles.db contains the SHA256 values of the malware files. Download the complete [data dump](https://bazaar.abuse.ch/export/#csv) and unzip the CSV file as malwarebazaar.csv to the folder where the script.sh resides. The setup.sh script will import the values into the database.
 
@@ -96,14 +99,13 @@ _(optional)_ The number of workers to use for the scanning process. (Default 4)
 - `--iscsi`
 _(optional)_ Present the backups using iSCSI. Only filesystems with the NTFS, ext4 and xfs filesystem can be scanned.
 - `--yaramode`
-_(optional)_ YARA scan mode - off (default), all, suspicious (scans only files that show indicators of compromise), content (Targets commont document/text files to detecte sensitive data patterns (e.g. PII, credentials)
+_(optional)_ YARA scan mode - off (default), all, suspicious (scans only files that show indicators of compromise), content (Targets commont document/text files to detecte sensitive data patterns (e.g. PII, credentials), highentropy **🔴 NEW**
 - `--evtscan`
-_(optional)_ Enables scanning of Windows Event Logs **🔴 NEW**
+_(optional)_ Enables scanning of Windows Event Logs 
 - `--evtlogs`
-_(optional)_ Comma-separated list of EVTX log files to scan  **🔴 NEW**
+_(optional)_ Comma-separated list of EVTX log files to scan
 - `--days`
-_(optional)_ Limit EVTX parsing to events within N days before restore point timestamp  **🔴 NEW**
-
+_(optional)_ Limit EVTX parsing to events within N days before restore point timestamp
 
 ### Examples
 Some examples of how the script can be executed.
@@ -126,8 +128,8 @@ sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi
 | 🔬 YARA Matches | Files identified via YARA rules |
 | 📂 Total Files | Number of indexed files |
 | 🌀 Multi-use Hashes | SHA256 hashes that appear with multiple filenames (possible masquerading) |
-| 🛑 High Severity Events | Number of critical security-related events (e.g., policy changes, log clears and more)  **🔴 NEW** |
-| ⚠️ Medium to High Events | Number of optentially suspicious events requiringfurther review   **🔴 NEW** |
+| 🛑 High Severity Events | Number of critical security-related events (e.g., policy changes, log clears and more) |
+| ⚠️ Medium to High Events | Number of optentially suspicious events requiringfurther review |
 
 
 📊 Table Overview
@@ -141,8 +143,8 @@ sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi
 | 🌀 Multi-use Hashes (Same SHA256, multiple filenames) | Highlights SHA-256 hashes used with different filenames. May indicate renamed or disguised malware |
 | ⚙️ System Process Names Outside System32 | Known system process names (e.g., svchost.exe, lsass.exe) found outside trusted paths like System32. Strong indicator of abuse or masquerading |
 | 🧠 High Entropy Files in Suspicious Paths | Identifies files with high entropy (>7.5), indicating possible encryption or obfuscation, located in suspicious directories |
-| 📑 Windows Event Log Entries | Parsed entries from Windows Event Log files (Security & PowerShell) for forensic and threat analysis  **🔴 NEW** |
-
+| 📑 Windows Event Log Entries | Parsed entries from Windows Event Log files (Security & PowerShell) for forensic and threat analysis |
+| 🧬 High-Entropy Executables with Recent PE Timestamps | Executable files with high entropy (>= 7.59) and suspicious Portable Executable attributes **🔴 NEW**|
 
 ## The Scripts
 ### Scanning Process Details
@@ -210,6 +212,7 @@ When such high-entropy files are found in directories like AppData, ProgramData,
 | 6.5 – 7.5     | Elevated entropy – may indicate mild compression or some obfuscation.      |
 | > 7.5         | High entropy – potentially packed, encrypted, or malicious (e.g., malware).|'
 
+For executable files with high entropy (>= 7.5), store.py automatically extracts additional metadata, including file type signatures (Magic) and Portable Executable (PE) attributes to support deeper malware analysis. It helps detect packed malware, malware droppers with recent compilation dates, and potentially unwanted programs. The results are displayed in the dashboard. (Entropy >= 7.9 and PE Timestamp > 2024-06-15)
 
 ### Argument Description
 - `--mount`
@@ -231,7 +234,7 @@ _(optional)_ Comma-separated list of folder names to skip
 - `--db`
 _(optional)_ SQLite DB path (default is file_index.db)
 
-## event-parser.py script **🔴 NEW** 
+## event-parser.py script  
 The event-parser.py script extracts and analyzes security-related events from Windows event logs. It focuses on a defined set of Event IDs (Security & PowerShell Event Log) known to indicate potential threats, policy changes, or suspicious PowerShell usage.
 
 • Windows Security Event Ids (High Severity)
@@ -248,10 +251,7 @@ These events are parsed, stored in the database, and visualized in the dashboard
 This script analyzes previously indexed file metadata stored in file_index.db. It compares the data against known malware hashes from badfiles.db and checks for suspicious or changing file patterns across restore points. This helps to detect possible malware infections, tampering, or unusual activity on backup data.
 
 ## Coming Soon
-- For executable files with high entropy, store.py extracts additional metadata including file type signatures (Magic) and Portable Executable (PE)
-- Streamlit dashboard displays High-Entropy Executables with PE Metadata
-- YARA rule generator in the Streamlit dashboard on High-Entropy Executable, enabling security teams to create targeted detection rule for hunting!
-- Optimizations of the store.py script
+- MCP Server (Model Context Protocol)
 - Windows Registry Scan (Ready to use but still researching)
 
 ## Possible improvements
@@ -265,6 +265,12 @@ This script analyzes previously indexed file metadata stored in file_index.db. I
 - When mounting NTFS disks, it’s important to know that Ubuntu (from version 22.04 and newer) uses the built-in ntfs3 kernel driver, which provides better performance and more stable access. In contrast, Rocky Linux and other RHEL-based systems usually rely on the older ntfs-3g driver through FUSE, which is slower because it runs in user space. This means that the way NTFS is handled can vary depending on the system. It is technically possible to upgrade Rocky Linux to a newer Kernel (5.15 or higher) to support the native ntfs3 driver. Mounting NTFS volumes works well when using the -t ntfs parameter, especially with iSCSI attached disks. FUSE is not working and there are currently no efforts to conduct further research in this area.
 
 ## Version History
+- 1.3 (July 14th 2025)
+  - The new YARA highentropy mode in scanner.py starts a scan using the stored YARA rules
+  - The store.py script extracts file type signatures (Magic) and Portable Executable metadata for high-entropy executable file
+  - Store.py script optimizations
+  - Streamlit dasboard update to show the High-Entrpoy Executable files
+  - YARA rule generator in the Streamlit dashboard on High-Entropy executable files
 - 1.2 (July 8th 2025)
   - The scanner.py now also saves the SHA256 value for found LOLBAS files
   - Streamlit Dashboard date filter is now applied to all tables showing the restore point date
