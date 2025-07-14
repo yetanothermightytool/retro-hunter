@@ -5,12 +5,16 @@ import hashlib
 import sqlite3
 import multiprocessing
 from queue import Empty
-from datetime import datetime
+from datetime import datetime, timezone
 import stat
 import math
+import pefile
+import magic
 
-# Number of files processed per worker
+# Configuration Settings
 CHUNK_SIZE = 500
+ENTROPY_READ_SIZE = 204800
+MIN_FILESIZE_BYTES = 5 * 1024
 
 # Those extents are included in the store process
 DEFAULT_BINARY_EXTS = [
@@ -19,28 +23,26 @@ DEFAULT_BINARY_EXTS = [
    ".jar", ".pyc", ".apk", ".com"
 ]
 
-# Extents to classify the filetype. Will be stored in the database                                                                     
+# Extents to classify the filetype. Will be stored in the database
 EXECUTABLE_EXTS = {'.exe', '.dll', '.bin', '.so', '.elf', '.sh', '.bat', '.cmd', '.ps1', '.apk', '.com'}
 SCRIPT_EXTS     = {'.py', '.js', '.vbs', '.pl', '.rb', '.ps1', '.sh', '.bat', '.cmd'}
 IMAGE_EXTS      = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff'}
 DOCUMENT_EXTS   = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.rtf'}
 ARCHIVE_EXTS    = {'.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz'}
 
-# Classifies the file type based on its extension
-def detect_filetype(extension, is_exec=False):
-   ext = extension.lower()
-   if ext in EXECUTABLE_EXTS or (not ext and is_exec):
-       return "executable"
-   elif ext in SCRIPT_EXTS:
-       return "script"
-   elif ext in IMAGE_EXTS:
-       return "image"
-   elif ext in DOCUMENT_EXTS:
-       return "document"
-   elif ext in ARCHIVE_EXTS:
-       return "archive"
-   else:
-       return "other"
+# Good directories
+BENIGN_DIRS = [
+   "appdata\\local\\microsoft", "appdata\\local\\google", "syswow64", "windows\\system32",
+   "windows\\servicing", "windows\\winsxs", "programdata\\microsoft\\windows defender",
+   "appdata\\locallow\\microsoft\\cryptneturlcache", "appdata\\local\\microsoft\\credentials",
+   "office\\16.0\\webservicecache"
+]
+
+# Bad bad bad directories
+SUSPICIOUS_DIRS = [
+   "appdata\\roaming", "appdata\\local\\temp", "downloads", "recycle.bin", "programdata\\temp",
+   "users\\public", "windows\\temp"
+]
 
 # Parses command-line arguments and returns them as an object (New approach)
 def parse_args():
@@ -58,7 +60,7 @@ def parse_args():
    parser.add_argument("--verbose", action="store_true")
    return parser.parse_args()
 
-# Column Checker for adding new columns into existing table / Functionality update
+# Initializes the SQLite database and creates tables and indexes if needed
 def ensure_column_exists(conn, table, column, coltype):
    cur = conn.cursor()
    cur.execute(f"PRAGMA table_info({table})")
@@ -68,10 +70,10 @@ def ensure_column_exists(conn, table, column, coltype):
        cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
        conn.commit()
 
-# Initializes the SQLite database and creates tables and indexes if needed
 def init_db(path):
    conn = sqlite3.connect(path)
    cur = conn.cursor()
+
    cur.execute('''
        CREATE TABLE IF NOT EXISTS files (
            id INTEGER PRIMARY KEY,
@@ -92,19 +94,39 @@ def init_db(path):
            UNIQUE(hostname, sha256)
        )
    ''')
+
    ensure_column_exists(conn, "files", "entropy", "REAL")
    ensure_column_exists(conn, "files", "suspicious_structure", "TEXT")
+   ensure_column_exists(conn, "files", "magic_type", "TEXT")
+   ensure_column_exists(conn, "files", "pe_timestamp", "TEXT")
+   ensure_column_exists(conn, "files", "pe_sections", "TEXT")
 
    cur.execute("CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256)")
    cur.execute("CREATE INDEX IF NOT EXISTS idx_files_host_filename_sha256_ts ON files(hostname, filename, sha256, rp_timestamp)")
    conn.commit()
    conn.close()
 
+# Classifies the file type based on its extensio
+def detect_filetype(extension, is_exec=False):
+   ext = extension.lower()
+   if ext in EXECUTABLE_EXTS or (not ext and is_exec):
+       return "executable"
+   elif ext in SCRIPT_EXTS:
+       return "script"
+   elif ext in IMAGE_EXTS:
+       return "image"
+   elif ext in DOCUMENT_EXTS:
+       return "document"
+   elif ext in ARCHIVE_EXTS:
+       return "archive"
+   else:
+       return "other"
+
 # Entropy calculation using the Shannon entropy formula
 def calculate_entropy(filepath):
    try:
        with open(filepath, 'rb') as f:
-           data = f.read(204800)
+           data = f.read(ENTROPY_READ_SIZE)
        if not data:
            return 0.0
        entropy = 0
@@ -116,44 +138,59 @@ def calculate_entropy(filepath):
    except:
        return None
 
-# High Entropy Files Suspicious Paths
+# Suspicious file path check. Directories now moved to the beginning of the script to make it more readable
 def is_suspicious_structure(file_path):
    file_path = file_path.lower()
-   # Suspicious paths
-   suspicious_dirs = [
-       "appdata\\roaming", "appdata\\local\\temp", "downloads", "recycle.bin", "programdata\\temp",
-       "users\\public", "windows\\temp"
-   ]
-   # "Good" paths
-   benign_dirs = [
-       "appdata\\local\\microsoft", "appdata\\local\\google", "syswow64", "windows\\system32",
-       "windows\\servicing", "windows\\winsxs"
-   ]
-   if any(good in file_path for good in benign_dirs):
+   if any(good in file_path for good in BENIGN_DIRS):
        return "no"
-   elif any(bad in file_path for bad in suspicious_dirs):
+   elif any(bad in file_path for bad in SUSPICIOUS_DIRS):
        return "yes"
    return "no"
+
+# PE metadata extraction
+def enrich_pe_metadata(filepath):
+   try:
+       magic_type = magic.from_file(filepath)
+   except Exception as e:
+       magic_type = None
+   try:
+       pe = pefile.PE(filepath, fast_load=False)
+       raw_timestamp = pe.FILE_HEADER.TimeDateStamp
+       pe_timestamp = datetime.fromtimestamp(raw_timestamp, timezone.utc).isoformat()
+       sections = [s.Name.decode(errors='ignore').strip('\x00') for s in pe.sections]
+       pe_sections = ",".join(sections)
+   except Exception as e:
+       pe_timestamp, pe_sections = None, None
+   return magic_type, pe_timestamp, pe_sections
 
 # Get files
 def get_files(root, filetypes, maxsize, excludes):
    result = []
    normalized_excludes = [ex.lower().replace("\\", os.sep).replace("/", os.sep) for ex in excludes]
+
    for dirpath, _, files in os.walk(root):
        norm_dir = dirpath.lower()
        if any(ex in norm_dir for ex in normalized_excludes):
            continue
+
        for name in files:
            full_path = os.path.join(dirpath, name)
            if not os.path.isfile(full_path):
                continue
+
            ext = os.path.splitext(name)[1].lower()
+
            try:
                size = os.path.getsize(full_path)
            except:
                continue
+
            if maxsize and size > maxsize * 1024 * 1024:
                continue
+
+           if size < MIN_FILESIZE_BYTES:
+               continue
+
            if filetypes:
                if ext and ext in filetypes:
                    result.append(full_path)
@@ -161,9 +198,10 @@ def get_files(root, filetypes, maxsize, excludes):
                    result.append(full_path)
            else:
                result.append(full_path)
+
    return result
 
-# Checks if the file is marked as executable in the file system                                                                        
+# Checks if the file is marked as executable in the file system
 def is_executable(path):
    try:
        st = os.stat(path)
@@ -188,6 +226,13 @@ def extract_metadata(path):
        stat_result = os.stat(path)
        extension = os.path.splitext(path)[1].lower()
        exec_flag = is_executable(path)
+       entropy_val = calculate_entropy(path)
+       filetype_val = detect_filetype(extension, exec_flag)
+
+       magic_type, pe_timestamp, pe_sections = None, None, None
+       if entropy_val is not None and entropy_val >= 7.5 and filetype_val == "executable":
+           magic_type, pe_timestamp, pe_sections = enrich_pe_metadata(path)
+
        return {
            "filename": os.path.basename(path),
            "path": os.path.dirname(path),
@@ -197,14 +242,17 @@ def extract_metadata(path):
            "created": datetime.fromtimestamp(stat_result.st_ctime).isoformat(),
            "is_executable": exec_flag,
            "sha256": sha256_file(path),
-           "filetype": detect_filetype(extension, exec_flag),
-           "entropy": calculate_entropy(path),
-           "suspicious_structure": is_suspicious_structure(path)
+           "filetype": filetype_val,
+           "entropy": entropy_val,
+           "suspicious_structure": is_suspicious_structure(path),
+           "magic_type": magic_type,
+           "pe_timestamp": pe_timestamp,
+           "pe_sections": pe_sections
        }
    except:
        return None
 
-# Hashes and processes each file and sends metadata to result queue.
+# The worker process
 def worker(chunk_queue, result_queue, hostname, restorepoint_id, rp_timestamp, rp_status, db_path):
    conn = sqlite3.connect(db_path)
    cur = conn.cursor()
@@ -219,7 +267,7 @@ def worker(chunk_queue, result_queue, hostname, restorepoint_id, rp_timestamp, r
            if meta and meta["sha256"]:
                cur.execute("SELECT 1 FROM files WHERE hostname = ? AND sha256 = ?", (hostname, meta["sha256"]))
                if cur.fetchone():
-                   continue # Skip duplicate
+                   continue
                meta.update({
                    "hostname": hostname,
                    "restorepoint_id": restorepoint_id,
@@ -228,9 +276,10 @@ def worker(chunk_queue, result_queue, hostname, restorepoint_id, rp_timestamp, r
                })
                result_queue.put(meta)
        chunk_queue.task_done()
+
    conn.close()
 
-# Write into Database
+# Write into database
 def write_results(result_queue, db_path):
    conn = sqlite3.connect(db_path)
    cur = conn.cursor()
@@ -243,23 +292,26 @@ def write_results(result_queue, db_path):
                    hostname, restorepoint_id, rp_timestamp, rp_status,
                    path, filename, extension, size,
                    modified, created, sha256, filetype,
-                   is_executable, entropy, suspicious_structure
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   is_executable, entropy, suspicious_structure,
+                   magic_type, pe_timestamp, pe_sections
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ''', (
                meta["hostname"], meta["restorepoint_id"], meta["rp_timestamp"], meta["rp_status"],
                meta["path"], meta["filename"], meta["extension"], meta["size"],
                meta["modified"], meta["created"], meta["sha256"], meta["filetype"],
-               int(meta["is_executable"]), meta["entropy"], meta["suspicious_structure"]
+               int(meta["is_executable"]), meta["entropy"], meta["suspicious_structure"],
+               meta["magic_type"], meta["pe_timestamp"], meta["pe_sections"]
            ))
            if cur.rowcount:
                inserted += 1
        except Exception as e:
            print(f"❌ Failed to insert: {e}")
+
    conn.commit()
    conn.close()
    return inserted
 
-# The magic starts here
+# The mighty tool performs its magic
 def main():
    args = parse_args()
    filetypes = [ft.strip().lower() for ft in args.filetypes.split(",")] if args.filetypes else DEFAULT_BINARY_EXTS
