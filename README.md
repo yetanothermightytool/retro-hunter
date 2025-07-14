@@ -269,7 +269,7 @@ This script analyzes previously indexed file metadata stored in file_index.db. I
   - The new YARA highentropy mode in scanner.py starts a scan using the stored YARA rules
   - The store.py script extracts file type signatures (Magic) and Portable Executable metadata for high-entropy executable file
   - Store.py script optimizations
-  - Streamlit dasboard update to show the High-Entrpoy Executable files
+  - Streamlit dasboard update to show the High-Entropy Executable files
   - YARA rule generator in the Streamlit dashboard on High-Entropy executable files
 - 1.2 (July 8th 2025)
   - The scanner.py now also saves the SHA256 value for found LOLBAS files
