@@ -3,13 +3,13 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 
-# --- SETTINGS ---
+# Settings
 DB_PATH = "file_index.db"
 BADFILES_PATH = "badfiles.db"
 
 st.set_page_config(page_title="Retro Hunter - Security Analysis Dashboard", layout="wide")
 
-# --- EVENT ID CLASSIFICATION ---
+# Event ID definitions
 def classify_event_severity(event_id):
    high_ids = {4104, 4618, 4649, 4719, 4765, 4766, 4794, 4897, 4964, 5124}
    medium_high_ids = {800, 1102}
@@ -20,7 +20,7 @@ def classify_event_severity(event_id):
    else:
        return "Low"
 
-# --- LOAD FUNCTIONS ---
+# Load functions
 def load_files():
    try:
        conn = sqlite3.connect(DB_PATH)
@@ -138,20 +138,80 @@ def classify_risk(row):
        return "Medium"
    return "Low"
 
-# --- LOAD DATA ---
+# SETTINGS
+DB_PATH = "file_index.db"
+
+# YARA Rule Template
+YARA_TEMPLATE = """
+rule Suspicious_{rule_name}
+{{
+   meta:
+       description = "Auto-generated rule for {filename} with high entropy"
+       sha256 = "{sha256}"
+       created = "{created}"
+
+   strings:
+{sections}
+   condition:
+       uint16(0) == 0x5A4D{size_check}{section_check}
+}}
+"""
+
+# Function to generate yara rule
+def generate_yara_rule(filename, sha256, pe_sections, size):
+   rule_name = filename.lower().replace('.', '_').replace('-', '_').replace(' ', '_')[:32]
+   created = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+
+   ignore_sections = {'.rsrc', '.text', '.data', '.reloc', '.bss', '.edata'}
+   bad_sections = []
+   sections = ""
+   section_check = ""
+
+   if pe_sections:
+       section_list = [s.strip() for s in pe_sections.split(",") if s.strip()]
+       for sec in section_list:
+           if sec.lower() not in ignore_sections:
+               bad_sections.append(sec)
+
+   if not bad_sections:
+       return None
+
+   for i, sec in enumerate(bad_sections):
+       sections += f'        $section{i+1} = "{sec}"\n'
+   section_check = " and any of ($section*)"
+
+   size_check = ""
+   if size and size <= 5 * 1024 * 1024:
+       size_check = f" and filesize < {int(size) + 1024}"
+
+   rule = YARA_TEMPLATE.format(
+       rule_name=rule_name,
+       filename=filename,
+       sha256=sha256,
+       created=created,
+       sections=sections,
+       size_check=size_check,
+       section_check=section_check
+   )
+   return rule
+
+
+##################DIVIDER
+
+# Load Data
 files_df = load_files()
 scan_df = load_scan_findings()
 malware_df, lolbas_df = load_bad_hashes()
 
 files_df = enrich_files_with_hits(files_df, scan_df, malware_df)
 files_df["Risk Level"] = files_df.apply(classify_risk, axis=1)
-# --- FILTER SIDEBAR ---
+# Sidebar with filter
 st.sidebar.title("🔍 Filter")
 hostnames = sorted(files_df["hostname"].dropna().unique())
 selected_hosts = st.sidebar.multiselect("Hostnames", hostnames, default=hostnames)
 date_range = st.sidebar.date_input("Date Range", [])
 
-# --- APPLY FILTERS ---
+# Apply filters
 filtered = files_df[files_df["hostname"].isin(selected_hosts)]
 scan_filtered = scan_df.copy()
 event_df = load_eventlog_entries()
@@ -204,7 +264,7 @@ col3.metric("🔬 YARA Matches", yara_scan)
 col4.metric("📂 Total Files", len(filtered))
 col5.metric("🌀 Multi-use Hashes", multiuse_total)
 
-# --- WINDOWS SECURITY EVENTLOG KPI SECTION ---
+# Windows Eventlog Section
 st.markdown("---")
 st.markdown("### 🪟 Windows Event Log Analysis")
 
@@ -219,7 +279,7 @@ col7, col8 = st.columns(2)
 col7.metric("🛑 High Severity Events", high_count)
 col8.metric("⚠️ Medium to High Events", med_high_count)
 
-# --- SECURITY REPORTING TABLES ---
+# Security Reporting Tables
 st.markdown("---")
 st.markdown("### 📊 Security Reporting Tables")
 
@@ -246,7 +306,7 @@ if not suspicious.empty:
 else:
    st.info("No suspicious files found.")
 
-# --- SCAN FINDINGS ---
+# Scan Findings
 st.markdown("### 🔍 Scan Findings")
 if scan_filtered.empty:
    st.info("No scan findings available.")
@@ -261,7 +321,7 @@ else:
        ],
        use_container_width=True
    )
-# --- DEEP ANALYSIS ---
+# Deep analysis
 st.markdown("### 📊 Deep Analysis")
 
 def run_analysis_query(title, query):
@@ -330,7 +390,75 @@ run_analysis_query("🧠 High-Entropy Files in Suspicious Paths", """
  LIMIT 100
 """)
 
-# --- WINDOWS EVENTLOG TABLE ---
+# High Entropy Executables
+st.markdown("### 🧬 High-Entropy Executables with PE Metadata")
+
+filtered["pe_timestamp"] = pd.to_datetime(filtered["pe_timestamp"], errors='coerce').dt.tz_localize(None)
+
+pe_filtered_df = filtered[
+   (filtered["filetype"] == "executable") &
+   (filtered["entropy"] >= 7.9) &
+   (filtered["pe_timestamp"] >= pd.to_datetime("2024-06-15"))
+]
+
+if pe_filtered_df.empty:
+   st.info("No high-entropy executables with recent PE timestamp found.")
+else:
+   pe_filtered_df = pe_filtered_df.sort_values("entropy", ascending=False).head(100)
+
+   pe_filtered_df["VT Link"] = pe_filtered_df["sha256"].apply(
+       lambda h: f"[🔗](https://www.virustotal.com/gui/file/{h})"
+   )
+
+   pe_view = pe_filtered_df.rename(columns={
+       "hostname": "Host",
+       "filename": "Filename",
+       "path": "Path",
+       "rp_timestamp": "RP Timestamp",
+       "magic_type": "Magic Type",
+       "pe_timestamp": "PE Timestamp",
+       "pe_sections": "PE Sections",
+       "entropy": "Entropy",
+       "sha256": "SHA-256"
+   })
+
+   pe_view["Entropy"] = pe_view["Entropy"].round(2)
+
+   st.dataframe(
+       pe_view[
+           ["Host", "Filename", "Path", "RP Timestamp", "Entropy",
+            "Magic Type", "PE Timestamp", "PE Sections", "SHA-256", "VT Link"]
+       ],
+       use_container_width=True
+   )
+
+st.markdown("### 🛡️ On-demand YARA Rule Generator")
+if not pe_filtered_df.empty:
+   selected_filename = st.selectbox("Select a file for YARA rule", pe_filtered_df["filename"].unique())
+   selected_row = pe_filtered_df[pe_filtered_df["filename"] == selected_filename].iloc[0] if selected_filename else None
+   if selected_row is not None:
+       if st.button("🚀 Generate YARA Rule for Selected File"):
+           with st.spinner("Generating YARA rule..."):
+               filename = selected_row["filename"]
+               sha256 = selected_row["sha256"]
+               pe_sections = selected_row["pe_sections"]
+               size = selected_row["size"]
+               yara_rule = generate_yara_rule(filename, sha256, pe_sections, size)
+               if not yara_rule:
+                   st.warning("⚠️ No YARA rule generated — no unusual PE sections found.")
+               else:
+                   st.success("✅ YARA rule generated successfully.")
+                   st.text_area("Generated YARA Rule", yara_rule, height=300)
+                   st.download_button(
+                       label="💾 Download YARA Rule (.yar)",
+                       data=yara_rule,
+                       file_name=f"{filename}_rule.yar",
+                       mime="text/plain"
+                   )
+else:
+   st.info("No suitable high-entropy PE files found for YARA rule generation.")
+
+# Windows Eventlog Table
 st.markdown("---")
 st.markdown("### 📑 Windows Event Log Entries")
 if not event_df.empty:
@@ -338,8 +466,8 @@ if not event_df.empty:
 else:
    st.info("No relevant Windows Event Log entries found.")
 
-# --- FOOTER ---
+# Footer
 st.markdown("---")
 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-st.caption(f"🕵🏾‍♀️ Retro Hunter – powered by Veeam Data Integration API ({now}) - Version 1.2")
+st.caption(f"🕵🏾‍♀️ Retro Hunter – powered by Veeam Data Integration API ({now}) - Version 1.3")
 st.caption("🤖 Some logic and optimizations were assisted using AI tools.")
