@@ -15,7 +15,7 @@ fi
 # === PYTHON MODULE CHECK ===
 echo "🐍 Checking required Python modules..."
 # Nur nicht-standardmäßige Module prüfen
-REQUIRED_MODULES=(colorama requests keyring dateutil Evtx)
+REQUIRED_MODULES=(colorama requests keyring dateutil Evtx magic pefile)
 MISSING_MODULES=()
 for module in "${REQUIRED_MODULES[@]}"; do
    python3 -c "import $module" 2>/dev/null || MISSING_MODULES+=("$module")
