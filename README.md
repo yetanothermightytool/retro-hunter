@@ -30,6 +30,8 @@ Run the setup script, and start scanning! Execute `setup.sh` with the path to yo
 
 **Important** You must add the Linux server on which this script is executed to the [backup infrastructure](https://helpcenter.veeam.com/docs/backup/vsphere/add_linux_server.html).
 
+**Tested on UBUNTU 24.04**
+
 Something missing? Check the [Coming Soon section](#coming-soon).
 
 ## ⚙️ Setup Process
