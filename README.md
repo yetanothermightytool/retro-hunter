@@ -1,4 +1,4 @@
-# Retro Hunter - PostgresSQL 🕵🏾‍♀️
+# Retro Hunter 🕵🏾‍♀️
 **Security Scanner & Threat Audit Tool** for Veeam Backup & Replication Restore Points using the Veeam Data Integration API.
 
 ## 🛡️Find Threats in Your Backups – With Retro Hunter
