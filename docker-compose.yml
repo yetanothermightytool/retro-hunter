@@ -1,0 +1,50 @@
+services:
+ db:
+   build:
+     context: ./postgresql
+   container_name: retro-hunter-db
+   restart: unless-stopped
+   env_file:
+     - .env
+   environment:
+     POSTGRES_USER: ${POSTGRES_USER}
+     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+     POSTGRES_DB: ${POSTGRES_DB}
+   volumes:
+     - pg_data_v18:/var/lib/postgresql
+   ports:
+     - "5432:5432"
+   networks:
+     - retro-net
+
+ api:
+   build: ./backend
+   container_name: retro-hunter-api
+   env_file:
+     - .env
+   depends_on:
+     - db
+   networks:
+     - retro-net
+   ports:
+     - "8000:8000"
+   restart: unless-stopped
+ 
+ frontend:
+   image: node:20-alpine
+   container_name: retro-hunter-frontend
+   working_dir: /app
+   volumes:
+     - ./frontend:/app
+   command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
+   ports:
+     - "3000:3000"
+   networks:
+     - retro-net
+   restart: unless-stopped 
+
+networks:
+ retro-net:
+
+volumes:
+ pg_data_v18:
