@@ -6,6 +6,7 @@ import { apiFetch } from "../lib/api";
 import { Button } from "../components/Button";
 import { Footer } from "../components/Footer-Login";
 
+
 export default function LoginPage() {
  const [email, setEmail] = useState("");
  const [password, setPassword] = useState("");
@@ -36,8 +37,8 @@ export default function LoginPage() {
        backgroundImage: "url(/login-bg.png)",
        backgroundRepeat: "no-repeat",
        backgroundPosition: "center",
-       backgroundSize: "contain", 
-       backgroundColor: "#0f172a",
+       backgroundSize: "contain",   // ← Bild kleiner / nicht vollflächig
+       backgroundColor: "#0f172a",  // dunkler Hintergrund dahinter
        display: "grid",
        placeItems: "center",
        padding: 24,
@@ -49,14 +50,14 @@ export default function LoginPage() {
          maxWidth: 360,
          padding: 24,
          borderRadius: 14,
-         background: "rgba(255,255,255,0.75)",
+         background: "rgba(255,255,255,0.75)", // ← mehr Transparenz
          backdropFilter: "blur(8px)",
          border: "1px solid rgba(255,255,255,0.25)",
          boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
        }}
      >
        <form onSubmit={onSubmit} style={{ display: "grid", gap: 10 }}>
-         <h2 style={{ margin: 0 }}>Retro Hunter Login</h2>
+         <h2 style={{ color: "black", margin: 0 }}>Retro Hunter Login</h2>
 
          <input
            name="email"
@@ -64,7 +65,7 @@ export default function LoginPage() {
            placeholder="Email"
            value={email}
            onChange={(e) => setEmail(e.target.value)}
-           style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+           style={{ color: "black", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
          />
 
          <input
@@ -74,7 +75,7 @@ export default function LoginPage() {
            placeholder="Password"
            value={password}
            onChange={(e) => setPassword(e.target.value)}
-           style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+           style={{ color: "black", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
          />
 
          <Button type="submit">
