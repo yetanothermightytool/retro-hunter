@@ -37,17 +37,18 @@ services:
    restart: unless-stopped
 
  db:
-   image: postgres:18
+   build:
+     context: ./postgresql
    container_name: retro-hunter-db
+   restart: unless-stopped
    env_file:
      - .env
    volumes:
-     - pgdata:/var/lib/postgresql/data
+     - pg_data:/var/lib/postgresql/data
    ports:
      - "5432:5432"
    networks:
      - retro-net
-   restart: unless-stopped
 
 networks:
  retro-net:
