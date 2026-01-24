@@ -44,7 +44,7 @@ services:
    env_file:
      - .env
    volumes:
-     - pg_data:/var/lib/postgresql/data
+     - pg_data:/var/lib/postgresql
    ports:
      - "5432:5432"
    networks:
@@ -54,4 +54,4 @@ networks:
  retro-net:
 
 volumes:
- pgdata:
+ pg_data:
