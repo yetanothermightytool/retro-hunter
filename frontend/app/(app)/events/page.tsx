@@ -138,7 +138,7 @@ export default function EventsPage() {
      </div>
 
      {view.length === 0 ? (
-       <div style={{ opacity: 0.7 }}>Keine Daten</div>
+       <div style={{ opacity: 0.7 }}>No data found!</div>
      ) : (
        <DataTable rows={view} columns={columns} />
      )}
