@@ -44,7 +44,7 @@ services:
    volumes:
      - pgdata:/var/lib/postgresql/data
    ports:
-     - "172.0.0.1:5432:5432"
+     - "5432:5432"
    networks:
      - retro-net
    restart: unless-stopped
