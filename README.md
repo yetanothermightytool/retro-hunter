@@ -331,6 +331,16 @@ Cleanup only for a specific host
 - When mounting NTFS disks, it’s important to know that Ubuntu (from version 24.04 and newer) uses the built-in ntfs3 kernel driver, which provides better performance and more stable access. In contrast, Rocky Linux and other RHEL-based systems usually rely on the older ntfs-3g driver through FUSE, which is slower because it runs in user space. This means that the way NTFS is handled can vary depending on the system. It is technically possible to upgrade Rocky Linux to a newer Kernel (5.15 or higher) to support the native ntfs3 driver. Mounting NTFS volumes works well when using the -t ntfs parameter, especially with iSCSI attached disks. FUSE is not working and there are currently no efforts to conduct further research in this area.
 
 ## Version History
+- 3.0.1 (February 2026)
+   - Security hardening
+   - Other preparations for official "launch"
+- 3.0 (January 2026)
+   - Remove Streamlit
+   - Frontend container for the Web Portal, incl. user management (admin & viewer role)
+   - Backend container for database queries
+   - Nginx container for frontend access
+   - Setup.sh updated
+   - Update.sh to update the Malwarebazaar table & the code
 - 2.4 (January 5 2026)
    - Event Parser: Added support for parsing Sysmon event logs
    - Streamlit Dashboard fixes and Sysmon event listings
