@@ -15,8 +15,8 @@ from dateutil import parser as dtparser
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # Script variables
-api_url      = "https://172.25.186.170:9419"
-api_version  = "1.2-rev1"
+api_url      = "https://vbr-lab:9419"
+api_version  = "1.3-rev0"
 mnt_base     = "/mnt"
 results_dir  = "/tmp/output"
 scanner_path = "./scanner.py"
