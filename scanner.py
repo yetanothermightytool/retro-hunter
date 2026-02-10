@@ -3,6 +3,7 @@ import argparse
 import os
 import hashlib
 import psycopg2
+import psycopg2.extras
 from dotenv import load_dotenv
 import multiprocessing
 from queue import Empty
@@ -13,6 +14,8 @@ import sys
 from datetime import datetime
 import math
 import yara
+import signal
+from contextlib import contextmanager
 
 init(autoreset=True)
 load_dotenv(dotenv_path=".env.local")
@@ -34,6 +37,9 @@ DEFAULT_EXCLUDES = [
    "AppData\\LocalLow\\Microsoft\\CryptnetUrlCache\\Content",
    "AppData\\Local\\Packages\\Microsoft.AAD.BrokerPlugin_cw5n1h2txyewy\\AC\\Microsoft\\CryptnetUrlCache\\Content"
 ]
+
+# Global Flags for graceful shuttdown
+shutdown_requested = False
 
 def parse_args():
    parser = argparse.ArgumentParser(description="Scan backups for known malicious files.")
@@ -82,18 +88,27 @@ def init_db():
    conn.close()
 
 def write_findings_to_db(results, args):
+   if not results:
+       return 0
+   
    conn = get_db_conn()
    cur = conn.cursor()
-   for path, sha256, detection in results:
-       cur.execute("""
-           INSERT INTO scan_findings (
-               hostname, restore_point_id, rp_timestamp, rp_status,
-               path, sha256, detection
-           ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-       """, (
-           args.hostname or "", args.restore_point_id or "", args.rp_timestamp or "",
-           args.rp_status or "", path, sha256 or "", detection
-       ))
+   
+   # Batch-Insert for better performance
+   data = [
+       (args.hostname or "", args.restore_point_id or "", 
+        args.rp_timestamp or "", args.rp_status or "", 
+        path, sha256 or "", detection)
+       for path, sha256, detection in results
+   ]
+   
+   psycopg2.extras.execute_batch(cur, """
+       INSERT INTO scan_findings (
+           hostname, restore_point_id, rp_timestamp, rp_status,
+           path, sha256, detection
+       ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+   """, data, page_size=1000)
+   
    conn.commit()
    conn.close()
    return len(results)
@@ -103,10 +118,29 @@ def log_message(msg, logfile):
        with open(logfile, "a", encoding="utf-8") as f:
            f.write(f"{datetime.now().isoformat()} {msg}\n")
 
+@contextmanager
+def timeout_context(seconds):
+   def timeout_handler(signum, frame):
+       raise TimeoutError("File operation timeout")
+   
+   # Testing
+   if hasattr(signal, 'SIGALRM'):
+       old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+       signal.alarm(seconds)
+       try:
+           yield
+       finally:
+           signal.alarm(0)
+           signal.signal(signal.SIGALRM, old_handler)
+   else:
+        
+       yield
+
 def calculate_entropy(filepath):
    try:
-       with open(filepath, 'rb') as f:
-           data = f.read(204800)
+       with timeout_context(5):
+           with open(filepath, 'rb') as f:
+               data = f.read(204800)
        if not data:
            return 0.0
        entropy = 0
@@ -115,7 +149,7 @@ def calculate_entropy(filepath):
            if p_x > 0:
                entropy -= p_x * math.log2(p_x)
        return round(entropy, 2)
-   except:
+   except (TimeoutError, PermissionError, FileNotFoundError, OSError):
        return None
 
 def get_files(root, filetypes, maxsize, excludes):
@@ -139,22 +173,23 @@ def get_files(root, filetypes, maxsize, excludes):
                try:
                    if os.path.getsize(path) > maxsize * 1024 * 1024:
                        continue
-               except:
+               except (PermissionError, FileNotFoundError, OSError):
                    continue
            result.append(path)
    return result
 
-def sha256_file(path):
+def sha256_file(path, timeout_seconds=5):
    h = hashlib.sha256()
    try:
-       with open(path, "rb") as f:
-           while True:
-               chunk = f.read(8192)
-               if not chunk:
-                   break
-               h.update(chunk)
+       with timeout_context(timeout_seconds):
+           with open(path, "rb") as f:
+               while True:
+                   chunk = f.read(8192)
+                   if not chunk:
+                       break
+                   h.update(chunk)
        return h.hexdigest()
-   except:
+   except (TimeoutError, PermissionError, FileNotFoundError, OSError):
        return None
 
 def load_hashes():
@@ -174,13 +209,21 @@ def normalize(p):
    return os.path.normpath(p).replace("\\", os.sep).lower()
 
 def compile_yara_rules(path="yara_rules"):
+   """Kompiliert YARA-Rules aus einem Verzeichnis"""
+   if not os.path.exists(path):
+       return None
    rules = {}
    for f in os.listdir(path):
        if f.endswith(".yar") or f.endswith(".yara"):
            rules[f] = os.path.join(path, f)
    return yara.compile(filepaths=rules) if rules else None
 
-def worker(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_paths, yara_rules, yara_mode, verbose, logfile):
+def worker(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_paths, yara_rules_path, yara_mode, verbose, logfile):
+   # YARA-Rules im Worker kompilieren (vermeidet Pickle-Probleme)
+   yara_rules = None
+   if yara_rules_path and yara_mode != "off":
+       yara_rules = compile_yara_rules(yara_rules_path)
+   
    while True:
        try:
            chunk = chunk_queue.get(timeout=5)
@@ -211,7 +254,9 @@ def worker(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_pa
                            stats_queue.put("lolbas")
                            suspicious = True
                    except Exception as e:
-                       print(f"⚠️ LOLBAS check failed for {path}: {e}")
+                       msg = f"⚠️ LOLBAS check failed for {path}: {type(e).__name__}"
+                       print(f"\n{Fore.YELLOW}{msg}")
+                       log_message(msg, logfile)
 
                if file_hash:
                    if file_hash in mw_hashes:
@@ -241,15 +286,20 @@ def worker(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_pa
                if do_yara:
                    print(f"{Fore.BLUE}🔬 YARA scan on: {path}")
                    try:
-                       matches = yara_rules.match(filepath=path)
+                       with timeout_context(10):
+                           matches = yara_rules.match(filepath=path)
                        for match in matches:
                            msg = f"❗ YARA MATCH: {path} → {match.rule}"
                            print(f"\n{Fore.BLUE}{Style.BRIGHT}{msg}")
                            log_message(msg, logfile)
                            result_queue.put((path, file_hash, f"YARA: {match.rule}"))
                            stats_queue.put("yara")
+                   except TimeoutError:
+                       msg = f"⚠️ YARA scan timeout for {path}"
+                       print(f"\n{Fore.YELLOW}{msg}")
+                       log_message(msg, logfile)
                    except Exception as e:
-                       msg = f"⚠️ YARA scan failed for {path}: {e}"
+                       msg = f"⚠️ YARA scan failed for {path}: {type(e).__name__}"
                        print(f"\n{Fore.YELLOW}{msg}")
                        log_message(msg, logfile)
        finally:
@@ -257,17 +307,31 @@ def worker(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_pa
 
 def monitor(stats_queue, total, stop_flag, result_stats):
    start = time.time()
+   last_progress = 0
+   no_progress_count = 0
+   
    while not stop_flag.is_set() or not stats_queue.empty():
        time.sleep(5)
        while not stats_queue.empty():
            s = stats_queue.get()
            result_stats[s] = result_stats.get(s, 0) + 1
+       
        scanned = sum(result_stats.values())
        elapsed = time.time() - start
        rate = scanned / elapsed * 60 if elapsed else 0
        remaining = total - scanned
        eta = remaining / (scanned / elapsed) if scanned and elapsed else 0
        percent = (scanned / total) * 100 if total else 0
+       
+       if scanned == last_progress:
+           no_progress_count += 1
+           if no_progress_count >= 6:  # 30 seconds no progress
+               sys.stdout.write(f"\n{Fore.YELLOW}⚠️  WARNING: No progress for 30s - possible hang!\n")
+               sys.stdout.flush()
+       else:
+           no_progress_count = 0
+       last_progress = scanned
+       
        sys.stdout.write(
            f"\r⏱️ Scanned: {scanned}/{total} "
            f"| Hash Matches: {result_stats.get('hash', 0)} "
@@ -283,9 +347,19 @@ def collector(result_queue, collected_list, stop_flag):
    while not stop_flag.is_set() or not result_queue.empty():
        try:
            item = result_queue.get(timeout=0.5)
+           if item is None:
+               break
            collected_list.append(item)
        except Empty:
            continue
+
+def signal_handler(signum, frame, stop_flag, collector_stop):
+   global shutdown_requested
+   if not shutdown_requested:
+       print(f"\n{Fore.YELLOW}⚠️  Received signal {signum}, shutting down gracefully...")
+       shutdown_requested = True
+       stop_flag.set()
+       collector_stop.set()
 
 def main():
    args = parse_args()
@@ -319,7 +393,9 @@ def main():
        chunk_queue.put(chunk)
 
    lol_hashes, mw_hashes, lol_paths = load_hashes()
-   yara_rules = compile_yara_rules() if args.yara != "off" else None
+   
+   # YARA Rules path
+   yara_rules_path = "yara_rules" if args.yara != "off" else None
 
    # Start monitor and collector
    stop_flag = multiprocessing.Event()
@@ -330,32 +406,44 @@ def main():
    collector_proc = multiprocessing.Process(target=collector, args=(result_queue, collected, collector_stop))
    collector_proc.start()
 
+   # Signal-Handler for graceful shutdown
+   signal.signal(signal.SIGINT, lambda s, f: signal_handler(s, f, stop_flag, collector_stop))
+   signal.signal(signal.SIGTERM, lambda s, f: signal_handler(s, f, stop_flag, collector_stop))
+
    # Start workers
    workers = []
    for _ in range(args.workers):
        p = multiprocessing.Process(
            target=worker,
-           args=(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_paths, yara_rules, args.yara, args.verbose, args.logfile)
+           args=(chunk_queue, result_queue, stats_queue, lol_hashes, mw_hashes, lol_paths, yara_rules_path, args.yara, args.verbose, args.logfile)
        )
        p.start()
        workers.append(p)
 
    # Wait until all chunks are processed
-   chunk_queue.join()
+   try:
+       chunk_queue.join()
+   except KeyboardInterrupt:
+       print(f"\n{Fore.YELLOW}⚠️ Interrupted by user")
+   
    for p in workers:
        p.join()
 
    # Stop monitor and collector
    stop_flag.set()
+   result_queue.put(None)
    collector_stop.set()
    monitor_proc.join()
    collector_proc.join()
 
-   try:
-       while True:
-           collected.append(result_queue.get_nowait())
-   except Empty:
-       pass
+   # Save the rest results from the queue
+   while True:
+       try:
+           item = result_queue.get_nowait()
+           if item is not None:
+               collected.append(item)
+       except Empty:
+           break
 
    results = list(collected)
 
@@ -364,7 +452,7 @@ def main():
        base, ext = os.path.splitext(args.csv)
        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
        final_name = f"{base}_{timestamp}{ext}"
-       out_dir = os.path.dirname(final_name) or "."
+       out_dir = os.dirname(final_name) or "."
        os.makedirs(out_dir, exist_ok=True)
        with open(final_name, "w", newline="", encoding="utf-8") as f:
            writer = csv.writer(f)
@@ -392,3 +480,4 @@ def main():
 
 if __name__ == "__main__":
    main()
+
