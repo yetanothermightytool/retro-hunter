@@ -333,6 +333,7 @@ Cleanup only for a specific host
 ## Version History
 - 3.0.1 (February 2026)
    - Security hardening
+   - Performance & stability improvments
    - Other preparations for official "launch"
 - 3.0 (January 2026)
    - Remove Streamlit
