@@ -7,6 +7,7 @@ import time
 import signal
 import socket
 import requests
+from dotenv import load_dotenv
 from cryptography.fernet import Fernet
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from dateutil import parser as dtparser
@@ -14,8 +15,10 @@ from dateutil import parser as dtparser
 # Disable SSL warnings
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+load_dotenv(dotenv_path=".env.local")
+
 # Script variables
-api_url      = "https://vbr-lab:9419"
+api_url      = os.getenv("VEEAM_API_URL") # "https://__REPLACE_VBR_SERVER__:9419"
 api_version  = "1.3-rev0"
 mnt_base     = "/mnt"
 results_dir  = "/tmp/output"
@@ -361,7 +364,7 @@ def main():
     parser.add_argument("--days", type=int, help="Optional: Limit EVTX parsing to events within N days before restore point")
     args = parser.parse_args()
 
-    username = "administrator"
+    username = "__REPLACE_REST_API_USER__"
     password = get_password()
 
     print("🐻 Get Bearer Token....")
