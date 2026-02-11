@@ -13,17 +13,16 @@ Retro Hunter is a lightweight Python-based toolkit that scans Veeam Backup & Rep
 
 ## ✅ Key Features
 - Search for Veeam backups from a specific host or Veeam Backup Repository
-- Mounts the manually selected backup via the Veeam Data Integration API
-- Mounts the latest restore point from all supported platforms from a Veeam Backup Repository
+- Mounts the manually selected backup via the Veeam Data Integration API or mounts the latest restore point from all supported platforms from a Veeam Backup Repository
 - Scans mounted Veeam restore points
 - Saves useful metadata from the presented files
 - Parallelized scanning using Python’s multiprocessing for fast performance
-- Tracks file changes across restore points (hash or size drift)
-- Detects known malware using hash lookups from MalwareBazaar
+- Tracks file changes across restore points
+- Detects known malware using hash lookups from MalwareBazaar (offline)
 - Identifies out-of-place LOLBAS (Living Off the Land Binaries and Scripts)
 - Optionally applies YARA rules to selected file types during scan
 - Optionally scans the Windows Eventlog for specific event-ids (Security/PowerShell/Sysmon) **🔴 Enhanced in v2.4**
-- Optionally scans specific Windows Registry Hives 
+- Optionally scans specific Windows Registry Hives **🔴 Expanded in v3.0.1**
 - NAS AV Scan with all features from this [script](https://github.com/yetanothermightytool/python/blob/main/vbr/vbr-nas-av-scan/README.md) & YARA scan capabilities. Scan results visible in Streamlit dashboard **🔴 New in v2.3**
 - Uses PostgreSQL as the database. 
 
@@ -36,7 +35,7 @@ Run the setup script, and start scanning! Execute `setup.sh` with the path to yo
 
 ## Version Information
 ~~~~
-Version: 3.0
+Version: 3.0.1
 Requires: Veeam Backup & Replication & Linux & Python 3.1+
 Author: Stephan "Steve" Herzig
 ~~~~
@@ -45,11 +44,11 @@ Author: Stephan "Steve" Herzig
 The setup process is simplified with the setup.sh script. You only need to download the malwarebazaar.csv file (See more in the [Technical Details of the Scripts](#database) and run the script on your Linux host. You will be asked for the Veeam Backup & Replication Server hostname, REST API user, and a password during the setup. The password will be securely encrypted and stored using Fernet. The script now also asks for the SMB password for the NAS Scanner **🔴 New in v2.3**
 
 ```bash
-./setup.sh /path/to/malwarebazaar.csv retro-hunter
+./setup.sh /path/to/malwarebazaar.csv /path/to/retro-hunter-dir
 ```
 
 ## 🐳 Docker Support
-A minimal Docker setup is provided to run the frontend (webpage), backend (REST API) and the PostgreSQL database as a container.
+A Docker setup is provided to run Nginx, web frontend, backend (REST API) and the PostgreSQL database as a container.
 
 ## 🛠️ Technical Details of the Scripts
 
@@ -128,40 +127,6 @@ Scan the latest restore point of all suppored hosts from Veeam Repository "Repos
 ```bash
 sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi --scan
 ```
-
-## Retro Hunter Streamlit Dashboard
-✅ Overview Tab - Key Metrics
-| Metric  | Description |
-| ------------- | ------------- |
-| 🦠 Malware Matches  | Total number of files matching known malware hashes|
-| 🛠️ LOLBAS Hit | Files flagged by LOLBAS rule matches |
-| 🔬 YARA Matches | Files identified via YARA rules |
-| 📁 Files per host | Shows the total amount of stored files |
-| 🐞 Malware Hash Matches | Displays files from the backup that match known malware hashes (e.g. from MalwareBazaar). Helps identify known threats |
-
-✅ Scans Tab
-| Metric  | Description |
-| ------------- | ------------- |
-| 🔍 Scan Findings | Results from YARA or LOLBAS scans. Includes detection labels, scan timestamps, and affected files |
-| 📦 Unstructured Data Scan Findings | Results from YARA or AV scans. Includes detection labels, scan timestamps, and affected files |
-
-
-📊 Deep Analysis Tab 
-| Table  | Description |
-| ------------- | ------------- |
-| 💣 Large Executables > 50MB | Shows .exe files larger than 50MB, which may indicate suspicious payloads or packers |
-| 📁 Suspicious EXEs in AppData | Lists executables located in AppData folders – commonly abused by malware for persistence or evasion |
-| 📂 Scripts in Temp/Download Directories | Detects script files (e.g., .ps1, .sh, .bat) in temporary or download paths – often used for staging attacks |
-| 🌀 Multi-use Hashes (Same SHA256, multiple filenames) | Highlights SHA-256 hashes used with different filenames. May indicate renamed or disguised malware |
-| ⚙️ System Process Names Outside System32 | Known system process names (e.g., svchost.exe, lsass.exe) found outside trusted paths like System32. Strong indicator of abuse or masquerading |
-| 🧬 Suspicious IFEO Debuggers (Registry Scan) | Description coming soon| 
-| 🧠 High Entropy Files in Suspicious Paths | Identifies files with high entropy (>7.5), indicating possible encryption or obfuscation, located in suspicious directories |
-| 🧬 High-Entropy Executables with Recent PE Timestamps | Executable files with high entropy (>= 7.59) and suspicious Portable Executable attributes|
-
-📊 Events Tab
-| Table  | Description |
-| ------------- | ------------- |
-| 📑 Windows Event Log Entries | Parsed entries from Windows Event Log files for forensic and threat analysis |
 
 ## The Scripts
 ### Scanning Process Details (scanner.py)
@@ -333,7 +298,7 @@ Cleanup only for a specific host
 ## Version History
 - 3.0.1 (February 2026)
    - Security hardening
-   - Performance & stability improvments
+   - Performance & stability improvments in all main scripts (retro-hunter, scanner, regscan, evtscan)
    - Other preparations for official "launch"
 - 3.0 (January 2026)
    - Remove Streamlit
@@ -382,4 +347,4 @@ Cleanup only for a specific host
 **This script is not officially supported by Veeam Software. Use it at your own risk.**
 
 Made with ❤️, fueled by 🍺, and powered by the **Veeam Data Integration API**.
-Inspired by real-world needs, supported by a bit of AI.
+Inspired by real-world needs, supported by a bit of artificial intelligence.
