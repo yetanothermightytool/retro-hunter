@@ -18,7 +18,7 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 load_dotenv(dotenv_path=".env.local")
 
 # Script variables
-api_url      = os.getenv("VEEAM_API_URL") # "https://__REPLACE_VBR_SERVER__:9419"
+api_url      = os.getenv("VEEAM_API_URL")
 api_version  = "1.3-rev0"
 mnt_base     = "/mnt"
 results_dir  = "/tmp/output"
