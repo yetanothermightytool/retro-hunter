@@ -12,10 +12,11 @@ from cryptography.fernet import Fernet
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from dateutil import parser as dtparser
 
+# Load variables from .env.local
+load_dotenv(dotenv_path=".env.local")
+
 # Disable SSL warnings
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-
-load_dotenv(dotenv_path=".env.local")
 
 # Script variables
 api_url      = os.getenv("VEEAM_API_URL")
