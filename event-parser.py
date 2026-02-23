@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import sys
 import psycopg2
 import psycopg2.extras
 from datetime import datetime, timedelta
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Set
 from contextlib import contextmanager
 from Evtx.Evtx import Evtx
 from xml.etree import ElementTree as ET
@@ -16,22 +17,23 @@ load_dotenv(dotenv_path=".env.local")
 EVENT_GROUPS = {
    # Windows Security – baseline (policy and important changes)
    "security_core": [4618, 4649, 4719, 4765, 4766, 4794, 4897, 4964, 5124, 1102],
-   
+
    # Windows Security – process activity
    "security_process": [4688, 4689, 4624, 4625, 4634, 4672, 4698, 4699, 4700, 4701, 4702],
-   
+
    # AppLocker
    "applocker_core": [8004, 8007],
-   
-   # PowerShell – core logging 
+
+   # PowerShell – core logging
    "powershell_core": [4104, 800, 4103, 4105, 4106],
-   
+
    # Sysmon – core telemetry
    "sysmon_core": [1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 22, 23, 25],
-   
-   # Reserved for future telemetry 
+
+   # Reserved for future telemetry
    "future_extended_telemetry": []
 }
+
 
 def _default_groups_for_logfile(logfile: str) -> List[str]:
    name = logfile.lower()
@@ -43,9 +45,11 @@ def _default_groups_for_logfile(logfile: str) -> List[str]:
        return ["security_core"]
    return []
 
-def resolve_event_ids_for_logfile(logfile: str, args) -> Optional[List[int]]:
+
+def resolve_event_ids_for_logfile(logfile: str, args) -> Optional[Set[int]]:
+   """Returns a set of allowed event IDs, or None if all events should be processed."""
    if args.event_ids:
-       return [int(e.strip()) for e in args.event_ids.split(",") if e.strip()]
+       return {int(e.strip()) for e in args.event_ids.split(",") if e.strip()}
 
    groups = []
 
@@ -57,18 +61,21 @@ def resolve_event_ids_for_logfile(logfile: str, args) -> Optional[List[int]]:
        if args.extended and "security" in logfile.lower():
            groups.append("security_process")
            groups.append("applocker_core")
-   
+           if args.verbose:
+               print(f"--extended active for {logfile}: adding security_process and applocker_core")
+
    if not groups:
        return None
 
-   event_ids = set()
+   event_ids: Set[int] = set()
    for g in groups:
        if g not in EVENT_GROUPS:
            available = ", ".join(EVENT_GROUPS.keys())
            raise ValueError(f"Unknown event group '{g}'. Available groups: {available}")
        event_ids.update(EVENT_GROUPS[g])
 
-   return sorted(event_ids)
+   return event_ids
+
 
 @contextmanager
 def get_db_connection():
@@ -89,6 +96,7 @@ def get_db_connection():
        if conn:
            conn.close()
 
+
 def init_table(cur):
    cur.execute("""
        CREATE TABLE IF NOT EXISTS win_events (
@@ -100,7 +108,7 @@ def init_table(cur):
            logfile TEXT,
            event_id INTEGER,
            level TEXT,
-           timestamp TEXT,
+           timestamp TIMESTAMPTZ,
            source TEXT,
            message TEXT
        )
@@ -111,13 +119,14 @@ def init_table(cur):
        ON win_events(hostname, event_id, timestamp, rp_timestamp)
    """)
 
+
 def parse_evtx(
    file_path: str,
    hostname: str,
    restorepoint_id: str,
    rp_timestamp: str,
    rp_status: str,
-   allowed_ids: Optional[List[int]],
+   allowed_ids: Optional[Set[int]],
    days_back: Optional[int],
    limit: Optional[int],
    verbose: bool
@@ -128,6 +137,8 @@ def parse_evtx(
    ns = {'e': 'http://schemas.microsoft.com/win/2004/08/events/event'}
    rp_dt = datetime.fromisoformat(rp_timestamp)
    start_dt = rp_dt - timedelta(days=days_back) if days_back else None
+
+   level_map = {"1": "Critical", "2": "Error", "3": "Warning", "4": "Information", "5": "Verbose"}
 
    try:
        with Evtx(file_path) as log:
@@ -143,17 +154,18 @@ def parse_evtx(
                        continue
 
                    eid = int(eid_node.text.strip())
-                   if allowed_ids and eid not in allowed_ids:
+                   # O(1) lookup because allowed_ids is a set
+                   if allowed_ids is not None and eid not in allowed_ids:
                        continue
 
                    timestamp_node = system.find("e:TimeCreated", ns)
                    if timestamp_node is None:
                        continue
-                   
+
                    timestamp_raw = timestamp_node.attrib.get("SystemTime", "")
                    if not timestamp_raw:
                        continue
-                   
+
                    timestamp_raw = timestamp_raw.replace("Z", "+00:00")
                    timestamp_dt = datetime.fromisoformat(timestamp_raw)
 
@@ -162,11 +174,14 @@ def parse_evtx(
 
                    provider_node = system.find("e:Provider", ns)
                    source = provider_node.attrib.get("Name", "") if provider_node is not None else ""
-                   
-                   level_map = {"1": "Critical", "2": "Error", "3": "Warning", "4": "Information", "5": "Verbose"}
+
                    level_node = system.find("e:Level", ns)
-                   level_str = level_map.get(level_node.text, "Unknown") if level_node is not None and level_node.text else "Unknown"
-                   
+                   level_str = (
+                       level_map.get(level_node.text, "Unknown")
+                       if level_node is not None and level_node.text
+                       else "Unknown"
+                   )
+
                    message = "".join(xml.itertext())[:2000].strip().replace("\n", " ").replace("\r", " ")
 
                    events.append((
@@ -177,7 +192,7 @@ def parse_evtx(
                        os.path.basename(file_path),
                        eid,
                        level_str,
-                       timestamp_raw,
+                       timestamp_dt,   # store as datetime, not raw string
                        source,
                        message
                    ))
@@ -185,7 +200,7 @@ def parse_evtx(
                    count += 1
                    if verbose and count % 1000 == 0:
                        print(f"Processed {count} events...")
-                   
+
                    if limit and count >= limit:
                        break
 
@@ -201,13 +216,18 @@ def parse_evtx(
 
    if errors > 0:
        print(f"Encountered {errors} parsing errors (skipped)")
-   
+
    return events
+
 
 def store_events(cur, conn, events: List[Tuple]) -> int:
    if not events:
-       print("No events to store")
+       print("No events to store.")
        return 0
+
+   # Count existing rows before insert for accurate delta
+   cur.execute("SELECT COUNT(*) FROM win_events")
+   count_before = cur.fetchone()[0]
 
    try:
        psycopg2.extras.execute_batch(
@@ -223,13 +243,19 @@ def store_events(cur, conn, events: List[Tuple]) -> int:
            page_size=500
        )
        conn.commit()
-       inserted = cur.rowcount
-       print(f"Inserted {inserted} new events")
+
+       cur.execute("SELECT COUNT(*) FROM win_events")
+       count_after = cur.fetchone()[0]
+       inserted = count_after - count_before
+
+       print(f"Inserted {inserted} new events ({len(events) - inserted} duplicates skipped).")
        return inserted
+
    except Exception as e:
        print(f"Error during batch insert: {e}")
        conn.rollback()
        raise
+
 
 def parse_args():
    parser = argparse.ArgumentParser(description="Parse Windows EVTX logs into PostgreSQL")
@@ -238,7 +264,7 @@ def parse_args():
    parser.add_argument("--restorepoint-id", required=True, help="Restore point ID")
    parser.add_argument("--rp-timestamp", required=True, help="Restore point timestamp (ISO format)")
    parser.add_argument("--rp-status", required=True, help="Restore point malware status")
-   parser.add_argument("--logfile", default="Security.evtx", help="Comma-separated list of EVTX files")
+   parser.add_argument("--logfiles", default="Security.evtx", help="Comma-separated list of EVTX files")
    parser.add_argument("--event-ids", help="Comma-separated list of numeric event IDs (hard override)")
    parser.add_argument("--event-groups", help="Comma-separated logical event groups (e.g. security_core,sysmon_core)")
    parser.add_argument("--days", type=int, help="Only parse events from last N days before restore point")
@@ -246,6 +272,7 @@ def parse_args():
    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
    parser.add_argument("--extended", action="store_true", help="Include extended Security event IDs")
    return parser.parse_args()
+
 
 def main():
    args = parse_args()
@@ -260,8 +287,7 @@ def main():
                init_table(cur)
                conn.commit()
 
-           logfiles = [l.strip() for l in args.logfile.split(",") if l.strip()]
-           all_events = []
+           logfiles = [l.strip() for l in args.logfiles.split(",") if l.strip()]
 
            for logfile in logfiles:
                evtx_path = os.path.join(args.mount, "Windows", "System32", "winevt", "Logs", logfile)
@@ -275,7 +301,7 @@ def main():
                    if used_ids is None:
                        print(f"No event ID filter applied for {logfile} (processing all events)")
                    else:
-                       print(f"Using {len(used_ids)} event IDs for {logfile}: {used_ids}")
+                       print(f"Using {len(used_ids)} event IDs for {logfile}: {sorted(used_ids)}")
 
                print(f"Parsing {logfile}...")
                parsed = parse_evtx(
@@ -289,19 +315,18 @@ def main():
                    args.limit,
                    args.verbose
                )
-               print(f"Found {len(parsed)} events in {logfile}")
-               all_events.extend(parsed)
+               print(f"Found {len(parsed)} events in {logfile}.")
 
-           with conn.cursor() as cur:
-               inserted = store_events(cur, conn, all_events)
+               # Write per logfile to avoid accumulating everything in RAM
+               with conn.cursor() as cur:
+                   store_events(cur, conn, parsed)
 
-           print(f"Scan complete. {inserted} new events stored in database.")
+       print("Scan complete.")
 
    except Exception as e:
        print(f"Fatal error: {e}")
-       return 1
+       sys.exit(1)
 
-   return 0
 
 if __name__ == "__main__":
-   exit(main())
+   main()
