@@ -56,12 +56,12 @@ if [ ! -d "$PROJECT_DIR/.git" ]; then
    exit 1
 fi
 
-echo "📂 Using project directory: $PROJECT_DIR"
+echo "Using project directory: $PROJECT_DIR"
 cd "$PROJECT_DIR" || exit 1
 
 # Check if DB needs to be updated
 if [ "$SKIP_DB_UPDATE" = false ] && [ -z "$MALWARE_CSV" ]; then
-   echo "ℹ️  No CSV file provided - skipping database update"
+   echo "No CSV file provided - skipping database update"
    SKIP_DB_UPDATE=true
 fi
 
@@ -86,7 +86,7 @@ if [ -f "retro-hunter.py" ]; then
 
    # Check if we got a valid username (not the placeholder)
    if [ -n "$REST_USER" ] && [ "$REST_USER" != "__REPLACE_REST_API_USER__" ]; then
-       echo "  ✓ Found REST API username: $REST_USER"
+       echo "    Found REST API username: $REST_USER"
    else
        echo "  ⚠️  No configured REST API username found (still using placeholder. Do you use the script?)"
        REST_USER=""
@@ -129,7 +129,7 @@ echo "✅ Backup created in $BACKUP_DIR"
 
 # CHECK FOR LOCAL CHANGES
 echo ""
-echo "🔍 Checking repository status..."
+echo "Checking repository status..."
 
 # Check for actual content changes (not just permission changes)
 if ! git diff --quiet HEAD -- 2>/dev/null; then
@@ -145,11 +145,11 @@ if ! git diff --quiet HEAD -- 2>/dev/null; then
    fi
    
    # Reset all local changes to tracked files
-   echo "🔄 Resetting local changes..."
+   echo "Resetting local changes..."
    git reset --hard HEAD
 elif ! git diff-index --quiet HEAD -- 2>/dev/null; then
    # Only permission changes (like +x flag)
-   echo "ℹ️  Detected executable flag changes (will be reset and reapplied after update)"
+   echo "Detected executable flag changes (will be reset and reapplied after update)"
    git reset --hard HEAD
 else
    echo "✅ No local changes detected"
@@ -168,12 +168,12 @@ if [ "$CURRENT_COMMIT" = "$REMOTE_COMMIT" ]; then
    REPO_UPDATED=false
 else
    echo ""
-   echo "📊 Changes to be applied:"
+   echo "Changes to be applied:"
    # Show compact summary of changes
    echo ""
    git log --oneline HEAD..origin/main | head -n 10
    echo ""
-   echo "📁 Files that will be updated:"
+   echo "Files that will be updated:"
    git diff --name-status HEAD..origin/main | head -n 20
    echo ""
    
@@ -191,7 +191,7 @@ fi
 
 # Restore local-only files
 echo ""
-echo "🔄 Restoring local configuration..."
+echo "Restoring local configuration..."
 
 # Restore local-only config files
 for file in "${LOCAL_ONLY_FILES[@]}"; do
@@ -218,19 +218,19 @@ if [ -d "$BACKUP_DIR/nginx/certs" ]; then
    chmod 700 nginx/certs
    chmod 600 nginx/certs/server.key 2>/dev/null || true
    chmod 644 nginx/certs/server.crt 2>/dev/null || true
-   echo "  ✓ Restored and secured nginx/certs/"
+   echo "    Restored and secured nginx/certs/"
 fi
 
 # Patch local files
 if [ -n "$REST_USER" ]; then
    echo ""
-   echo "🔧 Applying local configuration to scripts..."
+   echo "Applying local configuration to scripts..."
    
    for script in retro-hunter.py; do
        if [ -f "$script" ]; then
            if grep -q "__REPLACE_REST_API_USER__" "$script"; then
                sed -i "s|__REPLACE_REST_API_USER__|$REST_USER|g" "$script"
-               echo "  ✓ Patched $script with REST_USER"
+               echo "    Patched $script with REST_USER"
            else
                # Script was already patched or format changed
                if [ "$REPO_UPDATED" = true ]; then
@@ -248,7 +248,7 @@ fi
 
 # Make the scripts executable again
 echo ""
-echo "🔨 Setting executable permissions..."
+echo "Setting executable permissions..."
 SCRIPT_FILES=(
    "retro-hunter.py"
    "registry-analyzer.py"
@@ -270,9 +270,9 @@ for script in "${SCRIPT_FILES[@]}"; do
 done
 
 if [ $MADE_EXECUTABLE -gt 0 ]; then
-   echo "  ✓ Made $MADE_EXECUTABLE script(s) executable"
+   echo "    Made $MADE_EXECUTABLE script(s) executable"
 else
-   echo "  ✓ All scripts already executable"
+   echo "    All scripts already executable"
 fi
 
 # DB update
@@ -282,7 +282,7 @@ if [ "$SKIP_DB_UPDATE" = false ]; then
    
    # Copy new CSV
    cp "$MALWARE_CSV" malwarebazaar.csv
-   echo "  ✓ Copied new malwarebazaar.csv"
+   echo "    Copied new malwarebazaar.csv"
    
    # Check if import script exists
    if [ ! -f "import_malwarebazaar.py" ]; then
@@ -293,13 +293,13 @@ if [ "$SKIP_DB_UPDATE" = false ]; then
    # Check if database is running
    if command -v docker >/dev/null 2>&1; then
        if docker ps | grep -q retro-hunter-db; then
-           echo "  ✓ Database container is running"
+           echo "    Database container is running"
        else
            echo "⚠️  Database container not running"
            read -p "Start database now? [Y/n]: " START_DB
            if [[ ! "$START_DB" =~ ^[Nn]$ ]]; then
                docker compose up -d db
-               echo "⏳ Waiting for database..."
+               echo "Waiting for database..."
                sleep 5
            else
                echo "❌ Database update cancelled"
@@ -313,12 +313,12 @@ if [ "$SKIP_DB_UPDATE" = false ]; then
    echo "✅ MalwareBazaar data updated"
 else
    echo ""
-   echo "ℹ️  Skipping database update"
+   echo "Skipping database update"
 fi
 
 # Check if containers need to be restarted
 echo ""
-read -p "🔄 Restart Docker containers to apply updates? [Y/n]: " RESTART
+read -p "Restart Docker containers to apply updates? [Y/n]: " RESTART
 if [[ ! "$RESTART" =~ ^[Nn]$ ]]; then
    if command -v docker >/dev/null 2>&1; then
        echo "Rebuilding and restarting containers..."
@@ -329,7 +329,7 @@ if [[ ! "$RESTART" =~ ^[Nn]$ ]]; then
        echo "⚠️  Docker not found, skipping container restart"
    fi
 else
-   echo "ℹ️  Remember to restart containers manually:"
+   echo "   Remember to restart containers manually:"
    echo "   cd $PROJECT_DIR"
    echo "   docker compose build"
    echo "   docker compose up -d"
@@ -349,7 +349,7 @@ if [ "$BACKUP_COUNT" -gt 3 ]; then
 fi
 
 echo ""
-echo "🎉 Update complete!"
+echo "Update complete!"
 echo ""
 echo "Summary:"
 echo "   - Git repository: Updated"
