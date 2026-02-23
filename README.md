@@ -27,7 +27,7 @@ Retro Hunter is a lightweight Python-based toolkit that scans Veeam Backup & Rep
 - Uses PostgreSQL as the database. 
 
 ## 🚀 Quickstart (tl;dr)
-Run the setup script, and start scanning! Execute `setup.sh` with the path to your `malwarebazaar.csv` file to initialize the environment and databases. Once done, you can use `retro-hunter.py` to analyze mounted restore points for malware, LOLBAS, and YARA hits, or to index all executables and scripts. Finally, open the dashboard at https://<your-hostname>:8501 to explore the results.
+Run the setup script, and start scanning! Execute `setup.sh` with the path to your `malwarebazaar.csv` file to initialize the environment and databases. Once done, you can use `retro-hunter.py` to analyze mounted restore points for malware, LOLBAS, and YARA hits, index all executables and scripts, scan the Windows Registry, or scan specific Windows Eventlogs. Finally, open the dashboard at https://<your-hostname> to explore the results.
 
 **Important** You must add the Linux server on which this script is executed to the [backup infrastructure](https://helpcenter.veeam.com/docs/backup/vsphere/add_linux_server.html).
 
@@ -115,6 +115,8 @@ _(optional)_ Comma-separated list of EVTX log files to scan
 _(optional)_ Limit EVTX parsing to events within N days before restore point timestamp
 - `--regscan`
 _(optional)_ Enables scanning of the Windows Registry **🔴 ENHANCED**
+- `--dryrun`
+_(optional)_ Just shows the available restore points. **🔴 NEW V3.0 **
 
 ### Examples
 Some examples of how the script can be executed.
@@ -130,26 +132,10 @@ sudo ./retro-hunter.py --repo2scan "Repository 01" --yaramode suspicious --iscsi
 
 ## The Scripts
 ### Scanning Process Details (scanner.py)
-The following folders are excluded from the scan process. You can adjust the list using the existing DEFAULT_EXCLUDES variable.
-
-- **Windows\\WinSxS**
-- **Windows\\Temp**
-- **Windows\\SysWOW64**
-- **Windows\\System32\\DriverStore**
-- **Windows\\Servicing**
-- **ProgramData\\Microsoft\\Windows Defender**
-- **ProgramData\\Microsoft\\Windows Defender\\Platform**
-- **System Volume Information**
-- **Recovery**
-- **Windows\\Logs**
-- **Windows\\SoftwareDistribution\\Download**
-- **Windows\\Prefetch**
-- **Program Files\\Common Files\\Microsoft Shared**
-- **Windows\\Microsoft.NET\\Framework64**
-- **$Recycle.Bin**
+Specific folders are excluded from the scan process. You can adjust the list using the existing DEFAULT_EXCLUDES variable.
 
 ### scanner.py Parameters
-The Data Integration API script is not using all the available scanner.py parameters. This can be adjusted if necessary.
+The Retro Hunter Python script is not using all the available scanner.py parameters. This can be adjusted if necessary.
 - Mount			Path to the mounted backup filesystem
 
 Optional Parameters
@@ -169,7 +155,7 @@ _(optional)_ Path to logfile for matches (might get removed)
 _(optional)_ YARA scan mode (off, all, suspicious, content)
 
 ## store.py script details
-This script scans the mounted file system and collects detailed metadata for selected files (DEFAULT_BINARY_EXTS list or --filetypes is used). It calculates a SHA-256 hash for each file and stores all data in a local SQLite database. If the database does not exist, it is automatically created during the first run. The metadata stored includes file name, path, size, timestamps, extension, file type, and whether the file is executable. Each entry is tagged with a hostname, restore point ID, and timestamp, making later comparisons across backups possible.
+This script scans the mounted file system and collects detailed metadata for selected files (DEFAULT_BINARY_EXTS list or --filetypes is used). It calculates a SHA-256 hash for each file and stores all data in a local PostgreSQL database. If the database does not exist, it is automatically created during the first run. The metadata stored includes file name, path, size, timestamps, extension, file type, and whether the file is executable. Each entry is tagged with a hostname, restore point ID, and timestamp, making later comparisons across backups possible.
 The script supports parallel processing and can speed up scanning using multiple CPU cores. Filters can be applied to limit which files are scanned: only specific file types (like .exe or .dll), a maximum file size, and folders to exclude. 
 The script extracts key information for each file that matches the filters and calculates its SHA-256 hash. All collected data is inserted into the database, unless an entry with the same hostname and hash already exists.
 
@@ -180,7 +166,6 @@ The script detects files based on their extensions:
 - Images: .jpg, .png, .gif, etc. 
 - Documents: .pdf, .docx, .txt, etc. 
 - Archives: .zip, .tar, .7z, etc.
-If a file doesn’t match known types, it is labeled "other".
 
 ### Entropy Calculation
 Entropy is calculated using the Shannon entropy formula, based on the distribution of byte values in the file. The script reads the full content of each file and computes how evenly the byte values (0–255) are distributed, which reflects the randomness of the data. Highly random content is typical for encrypted, packed, or obfuscated files—techniques often used by malware to avoid detection.
@@ -216,7 +201,7 @@ _(optional)_ Comma-separated list of folder names to skip
 - `--db`
 _(optional)_ SQLite DB path (default is file_index.db)
 
-## event-parser.py script  **🔴 Enhanced in v2.4**
+## event-parser.py script
 The event-parser.py script extracts and analyzes security-related events from Windows event logs. It focuses on a defined set of Event IDs (Security & PowerShell Event Log) known to indicate potential threats, policy changes, or suspicious PowerShell usage.
 
 • Windows Security Event Ids (High Severity)
@@ -228,7 +213,7 @@ The list is based on official Microsoft recommendations (Events to Monitor).
 800, 4104
 • Sysmon Event IDs
 The script was extended to also support Sysmon events, allowing host-based telemetry such as process, network, file, and registry activity to be collected when Sysmon is available.
-1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 23, 25
+1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 22, 23, 25
 
 To parse multiple log sources, the script can be invoked with:
 
@@ -291,7 +276,7 @@ Cleanup only for a specific host
 - How about an ISO file with the OS and the setup script? (There is one ready to be used)
 
 ## Considerations and Limitations
-- The scripts have been created and tested on Ubuntu 24.04 and Veeam Backup & Replication 12.3.1 and 12.3.2 and 13.0.1 (tests ongoing **🔴 NEW **)
+- The scripts have been created and tested on Ubuntu 24.04 and Veeam Backup & Replication 12.3.1 and 12.3.2 and 13.0.1. The retro-hunter.py script uses REST API revision 1.3-rev0.
 - Only filesystems with the NTFS can be scanned when presenting the restore points using iSCSI
 - When mounting NTFS disks, it’s important to know that Ubuntu (from version 24.04 and newer) uses the built-in ntfs3 kernel driver, which provides better performance and more stable access. In contrast, Rocky Linux and other RHEL-based systems usually rely on the older ntfs-3g driver through FUSE, which is slower because it runs in user space. This means that the way NTFS is handled can vary depending on the system. It is technically possible to upgrade Rocky Linux to a newer Kernel (5.15 or higher) to support the native ntfs3 driver. Mounting NTFS volumes works well when using the -t ntfs parameter, especially with iSCSI attached disks. FUSE is not working and there are currently no efforts to conduct further research in this area.
 
@@ -347,4 +332,4 @@ Cleanup only for a specific host
 **This script is not officially supported by Veeam Software. Use it at your own risk.**
 
 Made with ❤️, fueled by 🍺, and powered by the **Veeam Data Integration API**.
-Inspired by real-world needs, supported by a bit of artificial intelligence.
+Inspired by real-world needs, supported by a bit of artificial intelligence for hardening the scripts.
