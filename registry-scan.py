@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 import os
 import re
+import logging
 import argparse
-from datetime import datetime
-from typing import List, Tuple
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -14,7 +13,13 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=".env.local")
 
-# Registry key patterns to be scanned
+logging.basicConfig(
+   level=logging.INFO,
+   format="%(asctime)s [%(levelname)s] %(message)s",
+   datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
 KEY_PATTERNS = [
    # ---------------------- Code Injection / Execution Hijacking ----------------------
    r".*\\AppCertDlls$",
@@ -56,13 +61,13 @@ KEY_PATTERNS = [
    # ---------------------- ASEPs: System-wide ----------------------
    r".*\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\Run$",
 
-   # ---------------------- RunServices (service startup at boot) ----------------------
+   # ---------------------- RunServices ----------------------
    r".*\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServices$",
    r".*\\Software\\Microsoft\\Windows\\CurrentVersion\\RunServicesOnce$",
    r".*\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\RunServices$",
    r".*\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\RunServicesOnce$",
 
-   # ---------------------- Boot Execute / Session Manager (additional keys) ----------------------
+   # ---------------------- Boot Execute / Session Manager ----------------------
    r".*\\System\\CurrentControlSet\\Control\\Session Manager\\BootExecute$",
    r".*\\System\\CurrentControlSet\\Control\\Session Manager\\Execute$",
    r".*\\System\\CurrentControlSet\\Control\\Session Manager\\S0InitialCommand$",
@@ -73,7 +78,7 @@ KEY_PATTERNS = [
    r".*\\Session Manager\\PendingFileRenameOperations$",
    r".*\\Control\\Session Manager\\BootExecute$",
 
-   # ---------------------- Startup folder path resolution in Registry ----------------------
+   # ---------------------- Startup folder path resolution ----------------------
    r".*\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders$",
    r".*\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders$",
 
@@ -104,7 +109,7 @@ KEY_PATTERNS = [
    r".*\\Classes\\CLSID\\.*\\InprocServer32$",
    r".*\\Classes\\CLSID\\.*\\LocalServer32$",
 
-   # ---------------------- Scheduled Tasks (Registry artifacts) ----------------------
+   # ---------------------- Scheduled Tasks ----------------------
    r".*\\Schedule\\TaskCache\\Tree\\.*",
    r".*\\Schedule\\TaskCache\\Tasks\\.*",
 
@@ -113,14 +118,23 @@ KEY_PATTERNS = [
    r".*\\Windows\\CurrentVersion\\Uninstall\\.*",
 ]
 
-COMPILED_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in KEY_PATTERNS]
+COMPILED_PATTERNS = [re.compile(p, re.IGNORECASE) for p in KEY_PATTERNS]
 
-# Registry hives to scan
 HIVES = {
-   "SYSTEM": r"Windows/System32/config/SYSTEM",
+   "SYSTEM":   r"Windows/System32/config/SYSTEM",
    "SOFTWARE": r"Windows/System32/config/SOFTWARE",
-   "NTUSER": r"Users/{user}/NTUSER.DAT",
+   "NTUSER":   r"Users/{user}/NTUSER.DAT",
 }
+
+EXECUTABLE_EXTENSIONS = ('.exe', '.dll', '.sys', '.bat', '.cmd', '.ps1', '.vbs', '.scr')
+
+
+def safe_mount_path(mount: str) -> str:
+   resolved = os.path.realpath(mount)
+   if not os.path.isdir(resolved):
+       raise ValueError(f"Mount path does not exist or is not a directory: {resolved}")
+   return resolved
+
 
 @contextmanager
 def get_db_connection():
@@ -135,11 +149,12 @@ def get_db_connection():
        )
        yield conn
    except Exception as e:
-       print(f"Database connection error: {e}")
+       logger.error(f"Database connection error: {e}")
        raise
    finally:
        if conn:
            conn.close()
+
 
 def init_pg(conn):
    with conn.cursor() as cur:
@@ -162,139 +177,128 @@ def init_pg(conn):
            ON registry_scan(hostname, restorepoint_id, hive, key_path, value_name, value_data)
        """)
        conn.commit()
-   print("Database schema initialized")
+   logger.info("Database schema initialized")
 
-def match_interesting_key(key_path):
+
+def match_interesting_key(key_path: str) -> bool:
    return any(pattern.search(key_path) for pattern in COMPILED_PATTERNS)
 
-def is_executable_component(value_data):
-   return any(ext in value_data.lower() for ext in ['.exe', '.dll', '.sys'])
 
-def parse_hive(hive_path, hive_name, hostname, restorepoint_id, rp_timestamp, rp_status):
-   if not os.path.exists(hive_path):
-       return []
+def is_executable_component(value_data: str) -> bool:
+   lower = value_data.lower()
+   return any(ext in lower for ext in EXECUTABLE_EXTENSIONS)
 
-   results = []
 
-   def walk_keys(key):
-       hits = []
-       full_path = key.path()
-       
-       if match_interesting_key(full_path):
-           last_written = key.timestamp().isoformat() if key.timestamp() else ""
-           
-           for val in key.values():
-               val_name = val.name()
-               try:
-                   val_data = str(val.value())
-               except Exception:
-                   val_data = "<unreadable>"
+def walk_keys(key, hostname: str, restorepoint_id: str,
+             rp_timestamp: str, rp_status: str, hive_name: str) -> list:
+   hits = []
+   full_path = key.path()
 
-               if "Services" in full_path and not is_executable_component(val_data):
-                   continue
+   if match_interesting_key(full_path):
+       last_written = key.timestamp().isoformat() if key.timestamp() else ""
 
-               hits.append((
-                   hostname,
-                   restorepoint_id,
-                   rp_timestamp,
-                   rp_status,
-                   hive_name,
-                   full_path,
-                   val_name,
-                   val_data,
-                   last_written
-               ))
-       
-       try:
-           for subkey in key.subkeys():
-               hits.extend(walk_keys(subkey))
-       except Exception:
-           pass
-       
-       return hits
+       for val in key.values():
+           val_name = val.name()
+           try:
+               val_data = str(val.value())
+           except Exception:
+               val_data = "<unreadable>"
 
-   try:
-       reg = Registry.Registry(hive_path)
-       results = walk_keys(reg.root())
-       print(f"Parsed {hive_name}: {len(results)} entries")
-   except Exception as e:
-       print(f"Failed to parse hive {hive_path}: {e}")
+           if "Services" in full_path and not is_executable_component(val_data):
+               continue
 
-   return results
-
-def parse_ntuser_hives(mount_path, hostname, restorepoint_id, rp_timestamp, rp_status, max_workers=4):
-   users_dir = os.path.join(mount_path, "Users")
-   if not os.path.isdir(users_dir):
-       print(f"Users directory not found: {users_dir}")
-       return []
-
-   all_hits = []
-   user_hives = []
-
-   for user in os.listdir(users_dir):
-       user_path = os.path.join(users_dir, user)
-       hive_path = os.path.join(user_path, "NTUSER.DAT")
-       if os.path.isfile(hive_path):
-           user_hives.append((hive_path, f"NTUSER ({user})"))
-
-   print(f"Found {len(user_hives)} user profiles")
-
-   with ThreadPoolExecutor(max_workers=max_workers) as executor:
-       futures = {
-           executor.submit(
-               parse_hive,
-               hive_path,
-               hive_name,
+           hits.append((
                hostname,
                restorepoint_id,
                rp_timestamp,
-               rp_status
+               rp_status,
+               hive_name,
+               full_path,
+               val_name,
+               val_data,
+               last_written
+           ))
+
+   try:
+       for subkey in key.subkeys():
+           hits.extend(walk_keys(subkey, hostname, restorepoint_id,
+                                 rp_timestamp, rp_status, hive_name))
+   except Exception:
+       pass
+
+   return hits
+
+
+def parse_hive(hive_path: str, hive_name: str, hostname: str,
+              restorepoint_id: str, rp_timestamp: str, rp_status: str) -> list:
+   if not os.path.exists(hive_path):
+       return []
+
+   try:
+       reg = Registry.Registry(hive_path)
+       results = walk_keys(reg.root(), hostname, restorepoint_id,
+                           rp_timestamp, rp_status, hive_name)
+       logger.info(f"Parsed {hive_name}: {len(results)} entries")
+   except Exception as e:
+       logger.error(f"Failed to parse hive {hive_path}: {e}")
+       results = []
+
+   return results
+
+
+def parse_ntuser_hives(mount_path: str, hostname: str, restorepoint_id: str,
+                      rp_timestamp: str, rp_status: str, max_workers: int = 4) -> list:
+   users_dir = os.path.join(mount_path, "Users")
+   if not os.path.isdir(users_dir):
+       logger.warning(f"Users directory not found: {users_dir}")
+       return []
+
+   user_hives = []
+   for user in os.listdir(users_dir):
+       hive_path = os.path.join(users_dir, user, "NTUSER.DAT")
+       if os.path.isfile(hive_path):
+           user_hives.append((hive_path, f"NTUSER ({user})"))
+
+   logger.info(f"Found {len(user_hives)} user profiles")
+
+   all_hits = []
+   with ThreadPoolExecutor(max_workers=max_workers) as executor:
+       futures = {
+           executor.submit(
+               parse_hive, hive_path, hive_name,
+               hostname, restorepoint_id, rp_timestamp, rp_status
            ): hive_name
            for hive_path, hive_name in user_hives
        }
-
        for future in as_completed(futures):
            hive_name = futures[future]
            try:
-               hits = future.result()
-               all_hits.extend(hits)
+               all_hits.extend(future.result())
            except Exception as e:
-               print(f"Error processing {hive_name}: {e}")
+               logger.error(f"Error processing {hive_name}: {e}")
 
    return all_hits
 
-def parse_all_hives(mount_path, hostname, restorepoint_id, rp_timestamp, rp_status):
+
+def parse_all_hives(mount_path: str, hostname: str, restorepoint_id: str,
+                   rp_timestamp: str, rp_status: str) -> list:
    all_hits = []
 
    for hive, rel_path in HIVES.items():
        if "{user}" in rel_path:
            continue
-       
        hive_path = os.path.join(mount_path, rel_path)
-       hits = parse_hive(
-           hive_path,
-           hive,
-           hostname,
-           restorepoint_id,
-           rp_timestamp,
-           rp_status
-       )
-       all_hits.extend(hits)
+       all_hits.extend(parse_hive(hive_path, hive, hostname,
+                                  restorepoint_id, rp_timestamp, rp_status))
 
-   user_hits = parse_ntuser_hives(
-       mount_path,
-       hostname,
-       restorepoint_id,
-       rp_timestamp,
-       rp_status
-   )
-   all_hits.extend(user_hits)
-
+   all_hits.extend(parse_ntuser_hives(mount_path, hostname,
+                                      restorepoint_id, rp_timestamp, rp_status))
    return all_hits
 
-def store_hits_pg(conn, hits):
+
+def store_hits_pg(conn, hits: list) -> int:
    if not hits:
-       print("No hits to store")
+       logger.info("No hits to store")
        return 0
 
    with conn.cursor() as cur:
@@ -312,53 +316,69 @@ def store_hits_pg(conn, hits):
                page_size=500
            )
            conn.commit()
-           inserted = cur.rowcount
-           print(f"Inserted {inserted} new entries")
-           return inserted
+           logger.info(
+               f"Attempted to insert {len(hits)} entries "
+               f"(duplicates skipped via ON CONFLICT DO NOTHING)"
+           )
+           return len(hits)
        except Exception as e:
-           print(f"Error during batch insert: {e}")
+           logger.error(f"Error during batch insert: {e}")
            conn.rollback()
            raise
 
-def parse_args():
-   parser = argparse.ArgumentParser(description="Parse Windows Registry hives for security-relevant keys")
-   parser.add_argument("--mount", required=True, help="Mounted Windows volume path")
-   parser.add_argument("--hostname", required=True, help="Hostname to tag")
+
+def parse_args() -> argparse.Namespace:
+   parser = argparse.ArgumentParser(
+       description="Parse Windows Registry hives for security-relevant keys"
+   )
+   parser.add_argument("--mount",           required=True, help="Mounted Windows volume path")
+   parser.add_argument("--hostname",        required=True, help="Hostname to tag")
    parser.add_argument("--restorepoint-id", required=True, help="Restore point ID")
-   parser.add_argument("--rp-timestamp", required=True, help="Restore point timestamp (ISO format)")
-   parser.add_argument("--rp-status", required=True, help="Restore point malware status")
-   parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers (default: 4)")
+   parser.add_argument("--rp-timestamp",    required=True, help="Restore point timestamp (ISO format)")
+   parser.add_argument("--rp-status",       required=True, help="Restore point malware status")
+   parser.add_argument("--workers",   type=int, default=4,   help="Parallel workers (default: 4)")
+   parser.add_argument("--log-level", default="INFO",
+                       choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                       help="Logging verbosity (default: INFO)")
    return parser.parse_args()
 
-def main():
-   args = parse_args()
 
-   print(f"Starting Registry scan for {args.hostname}")
-   print(f"Mount: {args.mount}")
-   print(f"Restore point: {args.restorepoint_id} ({args.rp_timestamp})")
+def main() -> int:
+   args = parse_args()
+   logging.getLogger().setLevel(getattr(logging, args.log_level))
+
+   logger.info(f"Starting Registry scan for {args.hostname}")
+   logger.info(f"Mount: {args.mount}")
+   logger.info(f"Restore point: {args.restorepoint_id} ({args.rp_timestamp})")
+
+   try:
+       mount_path = safe_mount_path(args.mount)
+   except ValueError as e:
+       logger.error(str(e))
+       return 1
 
    try:
        with get_db_connection() as conn:
            init_pg(conn)
 
            hits = parse_all_hives(
-               args.mount,
+               mount_path,
                args.hostname,
                args.restorepoint_id,
                args.rp_timestamp,
-               args.rp_status
+               args.rp_status,
            )
 
-           print(f"Found {len(hits)} total entries")
-
-           inserted = store_hits_pg(conn, hits)
-           print(f"Scan complete. {inserted} new entries stored.")
+           logger.info(f"Found {len(hits)} total entries")
+           store_hits_pg(conn, hits)
+           logger.info("Scan complete.")
 
    except Exception as e:
-       print(f"Fatal error: {e}")
+       logger.error(f"Fatal error: {e}")
        return 1
 
    return 0
+
 
 if __name__ == "__main__":
    exit(main())
