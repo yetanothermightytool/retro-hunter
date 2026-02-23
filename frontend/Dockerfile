@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --legacy-peer-deps
 COPY . .
+COPY favicon.ico ./public/favicon.ico
 RUN npm run build
 
 FROM node:24-alpine
