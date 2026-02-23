@@ -6,28 +6,36 @@ import { apiFetch } from "../lib/api";
 import { Button } from "../components/Button";
 import { Footer } from "../components/Footer-Login";
 
-
 export default function LoginPage() {
  const [email, setEmail] = useState("");
  const [password, setPassword] = useState("");
  const [error, setError] = useState("");
+ const [loading, setLoading] = useState(false);
  const router = useRouter();
 
  async function onSubmit(e: React.FormEvent) {
    e.preventDefault();
    setError("");
+   setLoading(true);
 
-   const res = await apiFetch("/auth/login", {
-     method: "POST",
-     body: JSON.stringify({ email, password }),
-   });
+   try {
+     const res = await apiFetch("/auth/login", {
+       method: "POST",
+       body: JSON.stringify({ email, password }),
+     });
 
-   if (!res.ok) {
-     setError("Login failed!");
-     return;
+     if (!res.ok) {
+       const data = await res.json().catch(() => null);
+       setError(data?.message ?? "Login failed!");
+       return;
+     }
+
+     router.push("/");
+   } catch {
+     setError("Connection error. Please try again.");
+   } finally {
+     setLoading(false);
    }
-
-   router.push("/");
  }
 
  return (
@@ -37,8 +45,8 @@ export default function LoginPage() {
        backgroundImage: "url(/login-bg.png)",
        backgroundRepeat: "no-repeat",
        backgroundPosition: "center",
-       backgroundSize: "contain",   // ← Bild kleiner / nicht vollflächig
-       backgroundColor: "#0f172a",  // dunkler Hintergrund dahinter
+       backgroundSize: "contain",
+       backgroundColor: "#0f172a",
        display: "grid",
        placeItems: "center",
        padding: 24,
@@ -50,7 +58,7 @@ export default function LoginPage() {
          maxWidth: 360,
          padding: 24,
          borderRadius: 14,
-         background: "rgba(255,255,255,0.75)", // ← mehr Transparenz
+         background: "rgba(255,255,255,0.75)",
          backdropFilter: "blur(8px)",
          border: "1px solid rgba(255,255,255,0.25)",
          boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
@@ -65,7 +73,12 @@ export default function LoginPage() {
            placeholder="Email"
            value={email}
            onChange={(e) => setEmail(e.target.value)}
-           style={{ color: "black", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+           disabled={loading}
+           required
+           style={{
+             color: "black", padding: 10, borderRadius: 10,
+             border: "1px solid #ddd", opacity: loading ? 0.6 : 1,
+           }}
          />
 
          <input
@@ -75,16 +88,25 @@ export default function LoginPage() {
            placeholder="Password"
            value={password}
            onChange={(e) => setPassword(e.target.value)}
-           style={{ color: "black", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+           disabled={loading}
+           required
+           style={{
+             color: "black", padding: 10, borderRadius: 10,
+             border: "1px solid #ddd", opacity: loading ? 0.6 : 1,
+           }}
          />
 
-         <Button type="submit">
-           Login
+         <Button type="submit" disabled={loading}>
+           {loading ? "Signing in…" : "Login"}
          </Button>
-	 
+
          <Footer />
 
-         {error && <p style={{ color: "crimson", margin: 0 }}>{error}</p>}
+         {error && (
+           <p role="alert" style={{ color: "crimson", margin: 0 }}>
+             {error}
+           </p>
+         )}
        </form>
      </div>
    </div>
