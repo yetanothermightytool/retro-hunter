@@ -20,17 +20,17 @@ type EventRow = {
  severity?: string | null;
 };
 
-function fmt(v: any) {
+function fmt(v: unknown) {
  if (!v) return "";
  try {
-   return new Date(v).toLocaleString();
+   return new Date(String(v)).toLocaleString();
  } catch {
    return String(v);
  }
 }
 
-function toCsv(rows: any[], columns: { key: string; label: string }[]) {
- const esc = (s: any) => {
+function toCsv(rows: Record<string, unknown>[], columns: { key: string; label: string }[]) {
+ const esc = (s: unknown) => {
    const str = s == null ? "" : String(s);
    const needs = /[",\n]/.test(str);
    const quoted = str.replace(/"/g, '""');
@@ -62,9 +62,13 @@ export default function EventsPage() {
  const [loading, setLoading] = useState(true);
 
  useEffect(() => {
+   let cancelled = false;
+
    async function load() {
      setLoading(true);
      const res = await apiFetch("/events?limit=5000");
+     if (cancelled) return;
+
      if (res.ok) {
        const json = (await res.json()) as ApiList<EventRow>;
        setItems(json.items ?? []);
@@ -73,22 +77,21 @@ export default function EventsPage() {
      }
      setLoading(false);
    }
+
    load();
+   return () => { cancelled = true; };
  }, []);
 
- const columns = useMemo(
-   () => [
-     { key: "hostname", label: "Host" },
-     { key: "rp_timestamp", label: "RP Timestamp" },
-     { key: "event_id", label: "Event ID" },
-     { key: "level", label: "Level" },
-     { key: "severity", label: "Severity" },
-     { key: "timestamp", label: "Event Time" },
-     { key: "source", label: "Source" },
-     { key: "message", label: "Message" },
-   ],
-   []
- );
+ const columns = useMemo(() => [
+   { key: "hostname", label: "Host" },
+   { key: "rp_timestamp", label: "RP Timestamp" },
+   { key: "event_id", label: "Event ID" },
+   { key: "level", label: "Level" },
+   { key: "severity", label: "Severity" },
+   { key: "timestamp", label: "Event Time" },
+   { key: "source", label: "Source" },
+   { key: "message", label: "Message" },
+ ], []);
 
  const view = useMemo(() => {
    const rows = [...items];
@@ -115,7 +118,7 @@ export default function EventsPage() {
    }));
  }, [items]);
 
- if (loading) return <div style={{ padding: 24 }}>Lade…</div>;
+ if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
 
  return (
    <div style={{ display: "grid", gap: 16 }}>
@@ -124,21 +127,21 @@ export default function EventsPage() {
          📑 Events
        </h1>
 
-       <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+       <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
          <Button
            onClick={() => downloadCsv("events.csv", toCsv(view, columns))}
            disabled={view.length === 0}
          >
            ⬇️ Download events.csv
          </Button>
-
-         <div style={{ fontSize: 13, opacity: 0.7, alignSelf: "center" }}>
+         <div style={{ fontSize: 13, opacity: 0.7 }}>
+           {view.length.toLocaleString()} rows
          </div>
        </div>
      </div>
 
      {view.length === 0 ? (
-       <div style={{ opacity: 0.7 }}>No data found!</div>
+       <div style={{ opacity: 0.7 }}>No events found.</div>
      ) : (
        <DataTable rows={view} columns={columns} />
      )}
