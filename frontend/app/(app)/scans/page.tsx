@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { DataTable } from "../../components/DataTable";
+import { Button } from "../../components/Button";
 
 type ApiList<T> = { count?: number; items: T[] };
 
@@ -25,17 +26,17 @@ type NasScanFinding = {
  scanned_at?: string | null;
 };
 
-function fmt(v: any) {
+function fmt(v: unknown) {
  if (!v) return "";
  try {
-   return new Date(v).toLocaleString();
+   return new Date(String(v)).toLocaleString();
  } catch {
    return String(v);
  }
 }
 
-function toCsv(rows: any[], columns: { key: string; label: string }[]) {
- const esc = (s: any) => {
+function toCsv(rows: Record<string, unknown>[], columns: { key: string; label: string }[]) {
+ const esc = (s: unknown) => {
    const str = s == null ? "" : String(s);
    const needs = /[",\n]/.test(str);
    const quoted = str.replace(/"/g, '""');
@@ -67,6 +68,8 @@ export default function ScansPage() {
  const [loading, setLoading] = useState(true);
 
  useEffect(() => {
+   let cancelled = false;
+
    async function load() {
      setLoading(true);
 
@@ -74,6 +77,8 @@ export default function ScansPage() {
        apiFetch("/scan_findings?limit=5000"),
        apiFetch("/nas_scan_findings?limit=5000"),
      ]);
+
+     if (cancelled) return;
 
      if (scanRes.ok) {
        const data = (await scanRes.json()) as ApiList<ScanFinding>;
@@ -93,35 +98,29 @@ export default function ScansPage() {
    }
 
    load();
+   return () => { cancelled = true; };
  }, []);
 
- const scanCols = useMemo(
-   () => [
-     { key: "hostname", label: "Host" },
-     { key: "path", label: "Path" },
-     { key: "sha256", label: "SHA-256" },
-     { key: "detection", label: "Detection" },
-     { key: "rp_timestamp", label: "RP Timestamp" },
-     { key: "rp_status", label: "RP Status" },
-     { key: "scanned_at", label: "Last Scan" },
-   ],
-   []
- );
+ const scanCols = useMemo(() => [
+   { key: "hostname", label: "Host" },
+   { key: "path", label: "Path" },
+   { key: "sha256", label: "SHA-256" },
+   { key: "detection", label: "Detection" },
+   { key: "rp_timestamp", label: "RP Timestamp" },
+   { key: "rp_status", label: "RP Status" },
+   { key: "scanned_at", label: "Last Scan" },
+ ], []);
 
- const nasCols = useMemo(
-   () => [
-     { key: "share_name", label: "Share Name" },
-     { key: "file_path", label: "File Path" },
-     { key: "scan_engine", label: "Scan Engine" },
-     { key: "detection", label: "Detection" },
-     { key: "restore_point_time", label: "RP Timestamp" },
-     { key: "scanned_at", label: "Last Scan" },
-   ],
-   []
- );
+ const nasCols = useMemo(() => [
+   { key: "share_name", label: "Share Name" },
+   { key: "file_path", label: "File Path" },
+   { key: "scan_engine", label: "Scan Engine" },
+   { key: "detection", label: "Detection" },
+   { key: "restore_point_time", label: "RP Timestamp" },
+   { key: "scanned_at", label: "Last Scan" },
+ ], []);
 
  const scanView = useMemo(() => {
-   // wie Streamlit: sortiert nach Last Scan absteigend (wenn vorhanden)
    const rows = [...scanItems];
    rows.sort((a, b) => {
      const ta = a.scanned_at ? Date.parse(a.scanned_at) : 0;
@@ -149,26 +148,20 @@ export default function ScansPage() {
    }));
  }, [nasItems]);
 
- if (loading) return <div style={{ padding: 24 }}>Lade…</div>;
+ if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
 
  return (
    <div style={{ display: "grid", gap: 24 }}>
      <div>
        <h1 style={{ fontSize: 28, fontWeight: 900, margin: 0 }}>🔍 Scan Findings</h1>
-       <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-         <button
-           onClick={() =>
-             downloadCsv(
-               "scans.csv",
-               toCsv(scanView, scanCols)
-             )
-           }
-           style={btn}
+       <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+         <Button
+           onClick={() => downloadCsv("scans.csv", toCsv(scanView, scanCols))}
            disabled={scanView.length === 0}
          >
            ⬇️ Download scans.csv
-         </button>
-         <div style={{ fontSize: 13, opacity: 0.7, alignSelf: "center" }}>
+         </Button>
+         <div style={{ fontSize: 13, opacity: 0.7 }}>
            {scanView.length.toLocaleString()} rows
          </div>
        </div>
@@ -182,20 +175,14 @@ export default function ScansPage() {
 
      <div style={{ marginTop: 10 }}>
        <h1 style={{ fontSize: 28, fontWeight: 900, margin: 0 }}>📦 Unstructured Data Scan Findings</h1>
-       <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-         <button
-           onClick={() =>
-             downloadCsv(
-               "nas_scans.csv",
-               toCsv(nasView, nasCols)
-             )
-           }
-           style={btn}
+       <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+         <Button
+           onClick={() => downloadCsv("nas_scans.csv", toCsv(nasView, nasCols))}
            disabled={nasView.length === 0}
          >
            ⬇️ Download nas_scans.csv
-         </button>
-         <div style={{ fontSize: 13, opacity: 0.7, alignSelf: "center" }}>
+         </Button>
+         <div style={{ fontSize: 13, opacity: 0.7 }}>
            {nasView.length.toLocaleString()} rows
          </div>
        </div>
@@ -209,11 +196,3 @@ export default function ScansPage() {
    </div>
  );
 }
-
-const btn: React.CSSProperties = {
- border: "1px solid #ddd",
- borderRadius: 10,
- padding: "10px 12px",
- background: "transparent",
- cursor: "pointer",
-};
