@@ -1,5 +1,5 @@
 "use client";
- 
+
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { DataTable } from "../../components/DataTable";
@@ -51,8 +51,6 @@ async function loadBlock(path: string): Promise<Row[]> {
 }
 
 export default function DeepAnalysisPage() {
- const [loadingAll, setLoadingAll] = useState(true);
-
  const [largeExes, setLargeExes] = useState<BlockState>({ loading: true, items: [] });
  const [exesAppData, setExesAppData] = useState<BlockState>({ loading: true, items: [] });
  const [scriptsTemp, setScriptsTemp] = useState<BlockState>({ loading: true, items: [] });
@@ -67,97 +65,70 @@ export default function DeepAnalysisPage() {
  const [yaraBusy, setYaraBusy] = useState(false);
  const [yaraMsg, setYaraMsg] = useState<string>("");
 
- // ---- Column definitions (pro Block) ----
- const colsLargeExes = useMemo(
-   () => [
-     { key: "host", label: "Host" },
-     { key: "filename", label: "Filename" },
-     { key: "path", label: "Path" },
-     { key: "size_mb", label: "Size (MB)" },
-   ],
-   []
- );
+ const colsLargeExes = useMemo(() => [
+   { key: "host", label: "Host" },
+   { key: "filename", label: "Filename" },
+   { key: "path", label: "Path" },
+   { key: "size_mb", label: "Size (MB)" },
+ ], []);
 
- const colsAppData = useMemo(
-   () => [
-     { key: "host", label: "Host" },
-     { key: "filename", label: "Filename" },
-     { key: "path", label: "Path" },
-   ],
-   []
- );
+ const colsAppData = useMemo(() => [
+   { key: "host", label: "Host" },
+   { key: "filename", label: "Filename" },
+   { key: "path", label: "Path" },
+ ], []);
 
- const colsScripts = useMemo(
-   () => [
-     { key: "host", label: "Host" },
-     { key: "filename", label: "Filename" },
-     { key: "path", label: "Path" },
-   ],
-   []
- );
+ const colsScripts = useMemo(() => [
+   { key: "host", label: "Host" },
+   { key: "filename", label: "Filename" },
+   { key: "path", label: "Path" },
+ ], []);
 
- const colsMultiHashes = useMemo(
-   () => [
-     { key: "sha256", label: "SHA-256" },
-     { key: "filename_count", label: "Filename Count" },
-     { key: "filenames", label: "Filenames" },
-   ],
-   []
- );
+ const colsMultiHashes = useMemo(() => [
+   { key: "sha256", label: "SHA-256" },
+   { key: "filename_count", label: "Filename Count" },
+   { key: "filenames", label: "Filenames" },
+ ], []);
 
- const colsSysOutside = useMemo(
-   () => [
-     { key: "host", label: "Host" },
-     { key: "filename", label: "Filename" },
-     { key: "path", label: "Path" },
-   ],
-   []
- );
+ const colsSysOutside = useMemo(() => [
+   { key: "host", label: "Host" },
+   { key: "filename", label: "Filename" },
+   { key: "path", label: "Path" },
+ ], []);
 
- const colsEntropySusp = useMemo(
-   () => [
-     { key: "filename", label: "Filename" },
-     { key: "path", label: "Path" },
-     { key: "sha256", label: "SHA-256" },
-     { key: "entropy", label: "Entropy" },
-     { key: "suspicious_structure", label: "Suspicious Path" },
-   ],
-   []
- );
+ const colsEntropySusp = useMemo(() => [
+   { key: "filename", label: "Filename" },
+   { key: "path", label: "Path" },
+   { key: "sha256", label: "SHA-256" },
+   { key: "entropy", label: "Entropy" },
+   { key: "suspicious_structure", label: "Suspicious Path" },
+ ], []);
 
- const colsIfeo = useMemo(
-   () => [
-     { key: "host", label: "Host" },
-     { key: "key_path", label: "Key Path" },
-     { key: "value_name", label: "Value Name" },
-     { key: "value_data", label: "Value Data" },
-     { key: "rp_timestamp", label: "RP Timestamp" },
-   ],
-   []
- );
+ const colsIfeo = useMemo(() => [
+   { key: "host", label: "Host" },
+   { key: "key_path", label: "Key Path" },
+   { key: "value_name", label: "Value Name" },
+   { key: "value_data", label: "Value Data" },
+   { key: "rp_timestamp", label: "RP Timestamp" },
+ ], []);
 
- const colsRecentPe = useMemo(
-   () => [
-     { key: "hostname", label: "Host" }, // backend liefert evtl hostname
-     { key: "host", label: "Host" },     // fallback falls backend host liefert
-     { key: "filename", label: "Filename" },
-     { key: "path", label: "Path" },
-     { key: "rp_timestamp", label: "RP Timestamp" },
-     { key: "entropy", label: "Entropy" },
-     { key: "magic_type", label: "Magic Type" },
-     { key: "pe_timestamp", label: "PE Timestamp" },
-     { key: "pe_sections", label: "PE Sections" },
-     { key: "sha256", label: "SHA-256" },
-   ],
-   []
- );
+ // Only "host" – check your backend and keep whichever field it actually returns
+ const colsRecentPe = useMemo(() => [
+   { key: "host", label: "Host" },
+   { key: "filename", label: "Filename" },
+   { key: "path", label: "Path" },
+   { key: "rp_timestamp", label: "RP Timestamp" },
+   { key: "entropy", label: "Entropy" },
+   { key: "magic_type", label: "Magic Type" },
+   { key: "pe_timestamp", label: "PE Timestamp" },
+   { key: "pe_sections", label: "PE Sections" },
+   { key: "sha256", label: "SHA-256" },
+ ], []);
 
  useEffect(() => {
    let alive = true;
 
    async function run() {
-     setLoadingAll(true);
-
      const wrap = async (setter: (s: BlockState) => void, fn: () => Promise<Row[]>) => {
        setter({ loading: true, items: [] });
        try {
@@ -171,27 +142,21 @@ export default function DeepAnalysisPage() {
      };
 
      await Promise.all([
-       wrap(setLargeExes, () => loadBlock("/analysis/large-executables?limit=200")),
+       wrap(setLargeExes,   () => loadBlock("/analysis/large-executables?limit=200")),
        wrap(setExesAppData, () => loadBlock("/analysis/exes-in-appdata?limit=200")),
        wrap(setScriptsTemp, () => loadBlock("/analysis/scripts-in-temp?limit=200")),
        wrap(setMultiHashes, () => loadBlock("/analysis/multi-use-hashes?limit=200")),
-       wrap(setSysOutside, () => loadBlock("/analysis/system-process-outside-system32?limit=200")),
+       wrap(setSysOutside,  () => loadBlock("/analysis/system-process-outside-system32?limit=200")),
        wrap(setEntropySusp, () => loadBlock("/analysis/high-entropy-suspicious-paths?limit=200")),
-       wrap(setIfeo, () => loadBlock("/analysis/ifeo-debuggers-suspicious?limit=200")),
-       wrap(setRecentPe, () => loadBlock("/analysis/high-entropy-recent-pe?limit=200")),
+       wrap(setIfeo,        () => loadBlock("/analysis/ifeo-debuggers-suspicious?limit=200")),
+       wrap(setRecentPe,    () => loadBlock("/analysis/high-entropy-recent-pe?limit=200")),
      ]);
-
-     if (!alive) return;
-     setLoadingAll(false);
    }
 
    run();
-   return () => {
-     alive = false;
-   };
+   return () => { alive = false; };
  }, []);
 
- // ---- YARA select options from recentPe ----
  const recentPeByFilename = useMemo(() => {
    const map = new Map<string, Row>();
    for (const r of recentPe.items || []) {
@@ -215,7 +180,7 @@ export default function DeepAnalysisPage() {
    setYaraRule("");
    const row = recentPeByFilename.get(yaraSelected);
    if (!row) {
-     setYaraMsg("Keine Datei ausgewählt.");
+     setYaraMsg("No file selected.");
      return;
    }
 
@@ -240,10 +205,10 @@ export default function DeepAnalysisPage() {
      const rule = data.rule as string | null;
 
      if (!rule) {
-       setYaraMsg("⚠️ Keine Rule generiert – keine ungewöhnlichen PE Sections gefunden.");
+       setYaraMsg("⚠️ No rule generated – no unusual PE sections found.");
      } else {
        setYaraRule(rule);
-       setYaraMsg("✅ Rule generiert");
+       setYaraMsg("✅ Rule generated");
      }
    } catch (e: any) {
      setYaraMsg(e?.message || "Error");
@@ -259,75 +224,32 @@ export default function DeepAnalysisPage() {
          📊 Deep Analysis Queries
        </h1>
        <div style={{ marginTop: 6, opacity: 0.75 }}>
-         Alle Queries wie im Streamlit Dashboard – kompakt als Report-Ansicht.
+         All queries from the Streamlit dashboard – displayed as a compact report view.
        </div>
      </div>
 
-     <AnalysisBlock
-       title="💣 Large Executables >-50-MB"
-       state={largeExes}
-       columns={colsLargeExes}
-       csvName="analysis_large_executables.csv"
-     />
+     <AnalysisBlock title="💣 Large Executables > 50 MB"                          state={largeExes}   columns={colsLargeExes}  csvName="analysis_large_executables.csv" />
+     <AnalysisBlock title="📁 Suspicious EXEs in AppData"                         state={exesAppData} columns={colsAppData}     csvName="analysis_exes_in_appdata.csv" />
+     <AnalysisBlock title="📂 Scripts in Temp/Download Directories"               state={scriptsTemp} columns={colsScripts}     csvName="analysis_scripts_in_temp.csv" />
+     <AnalysisBlock title="🌀 Multi-use Hashes (Same SHA-256, multiple filenames)" state={multiHashes} columns={colsMultiHashes} csvName="analysis_multi_use_hashes.csv" />
+     <AnalysisBlock title="⚙️ System Process Names Outside System32"              state={sysOutside}  columns={colsSysOutside}  csvName="analysis_system_process_outside_system32.csv" />
+     <AnalysisBlock title="🧠 High-Entropy Files in Suspicious Paths"             state={entropySusp} columns={colsEntropySusp} csvName="analysis_high_entropy_suspicious_paths.csv" />
+     <AnalysisBlock title="🧬 Suspicious IFEO Debuggers (Registry Scan)"          state={ifeo}        columns={colsIfeo}        csvName="analysis_ifeo_debuggers.csv" />
 
-     <AnalysisBlock
-       title="📁 Suspicious EXEs in AppData"
-       state={exesAppData}
-       columns={colsAppData}
-       csvName="analysis_exes_in_appdata.csv"
-     />
-
-     <AnalysisBlock
-       title="📂 Scripts in Temp/Download Directories"
-       state={scriptsTemp}
-       columns={colsScripts}
-       csvName="analysis_scripts_in_temp.csv"
-     />
-
-     <AnalysisBlock
-       title="🌀 Multi-use Hashes (Same SHA-256, multiple filenames)"
-       state={multiHashes}
-       columns={colsMultiHashes}
-       csvName="analysis_multi_use_hashes.csv"
-     />
-
-     <AnalysisBlock
-       title="⚙️ System Process Names Outside System32"
-       state={sysOutside}
-       columns={colsSysOutside}
-       csvName="analysis_system_process_outside_system32.csv"
-     />
-
-     <AnalysisBlock
-       title="🧠 High-Entropy Files in Suspicious Paths"
-       state={entropySusp}
-       columns={colsEntropySusp}
-       csvName="analysis_high_entropy_suspicious_paths.csv"
-     />
-
-     <AnalysisBlock
-       title="🧬 Suspicious IFEO Debuggers (Registry Scan)"
-       state={ifeo}
-       columns={colsIfeo}
-       csvName="analysis_ifeo_debuggers.csv"
-     />
-
-     {/* High entropy recent PE + YARA (WIE VORHER, NICHT ENTFERNT) */}
+     {/* High-Entropy Recent PE + YARA */}
      <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16, display: "grid", gap: 12 }}>
        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
          <h3 style={{ margin: 0 }}>🧬 High-Entropy Executables with Recent PE Metadata</h3>
-         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-           <Button
-             onClick={() => downloadText("analysis_high_entropy_recent_pe.csv", toCsv(recentPe.items, colsRecentPe))}
-             disabled={!recentPe.items.length}
-           >
-             ⬇️ Download CSV
-           </Button>
-         </div>
+         <Button
+           onClick={() => downloadText("analysis_high_entropy_recent_pe.csv", toCsv(recentPe.items, colsRecentPe))}
+           disabled={!recentPe.items.length}
+         >
+           ⬇️ Download CSV
+         </Button>
        </div>
 
        {recentPe.loading ? (
-         <div style={{ opacity: 0.75 }}>Lade…</div>
+         <div style={{ opacity: 0.75 }}>Loading…</div>
        ) : recentPe.error ? (
          <div style={{ color: "crimson" }}>{recentPe.error}</div>
        ) : recentPe.items.length === 0 ? (
@@ -351,9 +273,7 @@ export default function DeepAnalysisPage() {
                disabled={!yaraFiles.length}
              >
                {yaraFiles.map((f) => (
-                 <option key={f} value={f}>
-                   {f}
-                 </option>
+                 <option key={f} value={f}>{f}</option>
                ))}
              </select>
            </label>
@@ -388,8 +308,6 @@ export default function DeepAnalysisPage() {
          )}
        </div>
      </div>
-
-     {!loadingAll && <div style={{ opacity: 0.6, fontSize: 12 }} />}
    </div>
  );
 }
@@ -415,7 +333,7 @@ function AnalysisBlock({
      </div>
 
      {state.loading ? (
-       <div style={{ opacity: 0.75 }}>Lade…</div>
+       <div style={{ opacity: 0.75 }}>Loading…</div>
      ) : state.error ? (
        <div style={{ color: "crimson" }}>{state.error}</div>
      ) : state.items.length === 0 ? (
