@@ -31,15 +31,8 @@ function fmt(v: string | null) {
 
 function toCsv(items: SuspiciousItem[]) {
  const headers = [
-   "Host",
-   "Filename",
-   "Path",
-   "Risk Level",
-   "RP Timestamp",
-   "RP Status",
-   "Inserted At",
-   "SHA-256",
-   "VT Link",
+   "Host", "Filename", "Path", "Risk Level",
+   "RP Timestamp", "RP Status", "Inserted At", "SHA-256", "VT Link",
  ];
 
  const rows = items.map((r) => [
@@ -65,17 +58,19 @@ function toCsv(items: SuspiciousItem[]) {
    .join("\n");
 }
 
-/* ===== Small UI helpers ===== */
+function downloadCsv(filename: string, csv: string) {
+ const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement("a");
+ a.href = url;
+ a.download = filename;
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ URL.revokeObjectURL(url);
+}
 
-function KpiCard({
- icon,
- label,
- value,
-}: {
- icon: string;
- label: string;
- value: number;
-}) {
+function KpiCard({ icon, label, value }: { icon: string; label: string; value: number }) {
  return (
    <div
      style={{
@@ -136,7 +131,11 @@ export default function OverviewPage() {
 
        if (!cancelled) {
          if (!kpiRes.ok) {
-           setErr(`KPI request failed (${kpiRes.status})`);
+           setErr(
+             kpiRes.status === 501
+               ? "KPI endpoint not available – database may be empty."
+               : `KPI request failed (${kpiRes.status})`
+           );
          } else {
            setKpis(await kpiRes.json());
          }
@@ -146,22 +145,19 @@ export default function OverviewPage() {
            setItems(Array.isArray(data.items) ? data.items : []);
            setComparisonCnt(Number(data.comparison_cnt ?? 0));
          } else {
-           // Suspicious ist optional – Overview soll trotzdem laden
            setItems([]);
            setComparisonCnt(0);
          }
        }
-     } catch (e: any) {
-       if (!cancelled) setErr(e?.message || "Failed to load overview");
+     } catch (e: unknown) {
+       if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load overview");
      } finally {
        if (!cancelled) setLoading(false);
      }
    }
 
    load();
-   return () => {
-     cancelled = true;
-   };
+   return () => { cancelled = true; };
  }, []);
 
  const csv = useMemo(() => toCsv(items), [items]);
@@ -185,14 +181,12 @@ export default function OverviewPage() {
 
  return (
    <div style={{ display: "grid", gap: 24 }}>
-     {/* ===== Title ===== */}
      <div>
        <h1 style={{ margin: 0, fontSize: 30, fontWeight: 900 }}>
          🕵🏾‍♀️ Retro Hunter – Security Scanner &amp; Threat Audit
        </h1>
      </div>
 
-     {/* ===== KPIs ===== */}
      <div
        style={{
          display: "grid",
@@ -206,7 +200,6 @@ export default function OverviewPage() {
        <KpiCard icon="📂" label="Total Files" value={kpis.total_files} />
      </div>
 
-     {/* ===== Malware Hash Matches ===== */}
      <div style={{ display: "grid", gap: 12 }}>
        <div>
          <h3 style={{ margin: 0 }}>🐞 Malware Hash Matches</h3>
@@ -219,27 +212,8 @@ export default function OverviewPage() {
          <div style={{ opacity: 0.75 }}>No suspicious files found.</div>
        ) : (
          <>
-           <div
-             style={{
-               display: "flex",
-               justifyContent: "flex-end",
-               gap: 10,
-               flexWrap: "wrap",
-             }}
-           >
-             <Button
-               onClick={() => {
-                 const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-                 const url = URL.createObjectURL(blob);
-                 const a = document.createElement("a");
-                 a.href = url;
-                 a.download = "suspicious.csv";
-                 document.body.appendChild(a);
-                 a.click();
-                 a.remove();
-                 URL.revokeObjectURL(url);
-               }}
-             >
+           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+             <Button onClick={() => downloadCsv("suspicious.csv", csv)}>
                ⬇️ Download suspicious.csv
              </Button>
            </div>
@@ -279,9 +253,7 @@ export default function OverviewPage() {
                          >
                            Open in VirusTotal
                          </a>
-                       ) : (
-                         ""
-                       )}
+                       ) : ""}
                      </td>
                    </tr>
                  ))}
@@ -291,7 +263,7 @@ export default function OverviewPage() {
          </>
        )}
 
-       {err ? <div style={{ color: "#b00020" }}>{err}</div> : null}
+       {err && <div style={{ color: "#b00020" }}>{err}</div>}
      </div>
    </div>
  );
